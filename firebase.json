@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-malabarnikah-477e4b3b-1d58-42fa-baf9-b43afd044e9b",
+      "rules": "firestore.rules"
+    }
+  ]
+}

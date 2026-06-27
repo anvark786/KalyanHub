@@ -1,0 +1,6 @@
+{
+  "name": "KalyanHub",
+  "description": "A premium Kerala Muslim Matrimony application featuring verified profiles, community-specific filters, a secure messaging system, and a personalized user dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
