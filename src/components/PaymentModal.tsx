@@ -79,7 +79,7 @@ export default function PaymentModal({ isOpen, onClose, user, onPaymentSuccess }
 
   // WhatsApp notification link
   const waMessage = encodeURIComponent("Assalamu Alaikum. I have just completed the payment of ₹999 for KalyanHub Premium Club. My registered email is: " + user?.email + ". Please approve my membership.");
-  const waLink = `https://wa.me/919000000000?text=${waMessage}`;
+  const waLink = `https://wa.me/919496538664?text=${waMessage}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" id="payment_modal_overlay">
@@ -93,7 +93,7 @@ export default function PaymentModal({ isOpen, onClose, user, onPaymentSuccess }
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-emerald-950 transition-colors cursor-pointer"
+          className="absolute top-4 right-4 z-50 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-emerald-950 transition-colors border border-gray-200 shadow-sm cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -177,16 +177,7 @@ export default function PaymentModal({ isOpen, onClose, user, onPaymentSuccess }
                 </a>
               </div>
 
-              {/* Simulation Bypass */}
-              <div className="pt-6 border-t border-gray-100 space-y-2">
-                <div className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Evaluation Shortcut</div>
-                <button
-                  onClick={handleSimulateApproval}
-                  className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-emerald-950 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Simulate Admin Approval (Unlock All Now)
-                </button>
-              </div>
+
             </div>
           ) : (
             /* STATE: QR and payment details */
@@ -301,16 +292,7 @@ export default function PaymentModal({ isOpen, onClose, user, onPaymentSuccess }
                 )}
               </div>
 
-              {/* Developer Shortcut */}
-              <div className="pt-6 border-t border-gray-150 space-y-2">
-                <div className="text-[10px] uppercase font-bold text-gray-400 tracking-widest text-center">Fast Testing Option</div>
-                <button
-                  onClick={handleSimulateApproval}
-                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-emerald-950 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1"
-                >
-                  <Sparkles className="w-3.5 h-3.5 fill-amber-950/20" /> Simulate Instant Approval
-                </button>
-              </div>
+
             </div>
           )}
         </div>

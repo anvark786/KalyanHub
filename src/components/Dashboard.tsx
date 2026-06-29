@@ -6,8 +6,9 @@
 import React, { useState, useEffect } from "react";
 import { Profile, District, Sect, EducationType } from "../types";
 import ProfileCard from "./ProfileCard";
-import { Search, Filter, Shield, Heart, User, Check, RefreshCw, ChevronDown, Sliders, Briefcase, BookOpen, MapPin, Sparkles, Lock, Upload } from "lucide-react";
+import { Search, Filter, Shield, Heart, User, Check, RefreshCw, ChevronDown, Sliders, Briefcase, BookOpen, MapPin, Sparkles, Lock, Upload, AlertCircle, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { getAvatarPlaceholder } from "../utils/avatar";
 
 interface DashboardProps {
   currentUserProfile: Profile | null;
@@ -30,12 +31,11 @@ export function getProfileCompleteness(profile: Profile | null) {
     { name: "About Me / Bio", isComplete: !!profile.aboutMe && profile.aboutMe !== "Not specified" && !profile.aboutMe.includes("have recently joined") && !profile.aboutMe.includes("looking for a suitable partner") && profile.aboutMe.trim() !== "" },
     { name: "Education Details", isComplete: !!profile.educationDetails && profile.educationDetails !== "Not specified" && profile.educationDetails.trim() !== "" },
     { name: "Occupation", isComplete: !!profile.occupation && profile.occupation !== "Not specified" && profile.occupation.trim() !== "" },
-    { name: "Income Range", isComplete: !!profile.incomeRange && profile.incomeRange !== "Not specified" && profile.incomeRange.trim() !== "" },
     { name: "Father's Name", isComplete: !!profile.family?.fatherName && profile.family.fatherName !== "Not specified" && profile.family.fatherName.trim() !== "" },
-    { name: "Father's Occupation", isComplete: !!profile.family?.fatherOccupation && profile.family.fatherOccupation !== "Not specified" && profile.family.fatherOccupation.trim() !== "" },
+    { name: "Father's Occupation", isComplete: profile.family?.fatherStatus === "Passed Away" || (!!profile.family?.fatherOccupation && profile.family.fatherOccupation !== "Not specified" && profile.family.fatherOccupation.trim() !== "") },
     { name: "Mother's Name", isComplete: !!profile.family?.motherName && profile.family.motherName !== "Not specified" && profile.family.motherName.trim() !== "" },
     { name: "Mother's Occupation", isComplete: !!profile.family?.motherOccupation && profile.family.motherOccupation !== "Not specified" && profile.family.motherOccupation.trim() !== "" },
-    { name: "Siblings Details", isComplete: !!profile.family?.siblingsDetails && profile.family.siblingsDetails !== "Not specified" && profile.family.siblingsDetails !== "None" && profile.family.siblingsDetails.trim() !== "" },
+    { name: "Siblings Details", isComplete: !!profile.family?.siblingsDetails && profile.family.siblingsDetails !== "Not specified" && profile.family.siblingsDetails.trim() !== "" },
     { name: "Native Place / Address", isComplete: !!profile.family?.nativePlace && profile.family.nativePlace !== "Not specified" && profile.family.nativePlace.trim() !== "" },
   ];
   
@@ -70,12 +70,14 @@ export default function Dashboard({
     initialQueryFilters?.district ? [initialQueryFilters.district] : []
   );
   const [selectedEducations, setSelectedEducations] = useState<EducationType[]>([]);
+  const [selectedMaritalStatuses, setSelectedMaritalStatuses] = useState<string[]>([]);
   const [minAge, setMinAge] = useState<number>(18);
   const [maxAge, setMaxAge] = useState<number>(45);
   const [minHeight, setMinHeight] = useState<number>(140);
   const [maxHeight, setMaxHeight] = useState<number>(200);
   const [isVerifiedOnly, setIsVerifiedOnly] = useState<boolean>(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [sortBy, setSortBy] = useState<"newest" | "default">("newest");
 
   // My Profile Edit State
   const [editName, setEditName] = useState(currentUserProfile?.fullName || "");
@@ -91,6 +93,9 @@ export default function Dashboard({
   const [editAbout, setEditAbout] = useState(currentUserProfile?.aboutMe || "");
   const [editPhone, setEditPhone] = useState(currentUserProfile?.phone || "");
   const [editPhotos, setEditPhotos] = useState<string[]>(currentUserProfile?.photos || []);
+  const [editMaritalStatus, setEditMaritalStatus] = useState<"Never Married" | "Divorced" | "Widowed" | "Awaiting Divorce" | "Separated">(currentUserProfile?.maritalStatus || "Never Married");
+  const [editProfileFor, setEditProfileFor] = useState<"Self" | "Son" | "Daughter" | "Brother" | "Sister" | "Parent" | "Relative" | "Friend">(currentUserProfile?.profileFor || "Self");
+  const [editAddress, setEditAddress] = useState(currentUserProfile?.address || "");
   const [isDragging, setIsDragging] = useState(false);
   
   // Family Edit State
@@ -171,6 +176,7 @@ export default function Dashboard({
   };
 
   const [updateSuccess, setUpdateSuccess] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   // Photo Privacy Dashboard States
   const [isPhotoBlurred, setIsPhotoBlurred] = useState(currentUserProfile?.isPhotoBlurred || false);
@@ -252,6 +258,9 @@ export default function Dashboard({
       setEditAbout(currentUserProfile.aboutMe);
       setEditPhone(currentUserProfile.phone || "");
       setEditPhotos(currentUserProfile.photos || []);
+      setEditMaritalStatus(currentUserProfile.maritalStatus || "Never Married");
+      setEditProfileFor(currentUserProfile.profileFor || "Self");
+      setEditAddress(currentUserProfile.address || "");
       
       setFatherName(currentUserProfile.family?.fatherName || "");
       setFatherStatus(currentUserProfile.family?.fatherStatus || "Alive");
@@ -284,12 +293,14 @@ export default function Dashboard({
       if (selectedSects.length > 0) params.append("sects", selectedSects.join(","));
       if (selectedDistricts.length > 0) params.append("districts", selectedDistricts.join(","));
       if (selectedEducations.length > 0) params.append("educations", selectedEducations.join(","));
+      if (selectedMaritalStatuses.length > 0) params.append("maritalStatuses", selectedMaritalStatuses.join(","));
       params.append("minAge", minAge.toString());
       params.append("maxAge", maxAge.toString());
       params.append("minHeight", minHeight.toString());
       params.append("maxHeight", maxHeight.toString());
       if (isVerifiedOnly) params.append("isVerifiedOnly", "true");
       if (searchQuery) params.append("searchQuery", searchQuery);
+      params.append("sortBy", sortBy);
       params.append("page", pageToFetch.toString());
       params.append("limit", "6"); // Show 6 per page to easily demonstrate pagination
 
@@ -314,7 +325,61 @@ export default function Dashboard({
 
   useEffect(() => {
     fetchProfiles(1, false);
-  }, [selectedSects, selectedDistricts, selectedEducations, minAge, maxAge, minHeight, maxHeight, isVerifiedOnly, activeTab]);
+  }, [selectedSects, selectedDistricts, selectedEducations, selectedMaritalStatuses, minAge, maxAge, minHeight, maxHeight, isVerifiedOnly, activeTab, sortBy]);
+
+  const handleToggleDeactivate = async () => {
+    const isCurrentlyActive = currentUserProfile?.status === "Active" || currentUserProfile?.status === undefined;
+    const nextStatus = isCurrentlyActive ? "Inactive" : "Active";
+    const promptMessage = isCurrentlyActive 
+      ? "Are you sure you want to temporarily deactivate your profile?\n\nIt will be hidden from search recommendations and other candidates, but you can still log in and reactivate it anytime."
+      : "Reactivate your profile now?\n\nIt will immediately become visible to understanding candidates again!";
+      
+    if (!confirm(promptMessage)) {
+      return;
+    }
+    
+    try {
+      const res = await fetch("/api/profiles/deactivate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus, inactiveReason: "Temporarily deactivated by user" })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(isCurrentlyActive ? "Your profile is now inactive and hidden from other users." : "Your profile has been successfully reactivated!");
+        onUpdateMyProfile(data.profile);
+      } else {
+        alert(data.error || "Failed to update profile status.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An error occurred.");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!confirm("Are you absolutely sure you want to permanently delete your account?\n\nThis cannot be undone and you will lose access to KalyanHub permanently.")) {
+      return;
+    }
+    if (!confirm("Confirming for the second time:\n\nAll your profile data will be permanently hidden and you will never be able to log in with this account again.")) {
+      return;
+    }
+    
+    try {
+      const res = await fetch("/api/profiles/delete-account", {
+        method: "POST"
+      });
+      if (res.ok) {
+        alert("Your account has been permanently deleted. Goodbye.");
+        window.location.href = "/";
+      } else {
+        alert("Failed to delete account. Please contact admin.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An error occurred.");
+    }
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -345,10 +410,19 @@ export default function Dashboard({
     }
   };
 
+  const handleToggleMaritalStatus = (status: string) => {
+    if (selectedMaritalStatuses.includes(status)) {
+      setSelectedMaritalStatuses(selectedMaritalStatuses.filter((s) => s !== status));
+    } else {
+      setSelectedMaritalStatuses([...selectedMaritalStatuses, status]);
+    }
+  };
+
   const resetFilters = () => {
     setSelectedSects([]);
     setSelectedDistricts([]);
     setSelectedEducations([]);
+    setSelectedMaritalStatuses([]);
     setMinAge(18);
     setMaxAge(45);
     setMinHeight(140);
@@ -360,6 +434,8 @@ export default function Dashboard({
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setUpdateError(null);
+    setUpdateSuccess(false);
     try {
       const payload = {
         fullName: editName,
@@ -375,6 +451,9 @@ export default function Dashboard({
         aboutMe: editAbout,
         phone: editPhone,
         photos: editPhotos,
+        maritalStatus: editMaritalStatus,
+        profileFor: editProfileFor,
+        address: editAddress,
         family: {
           fatherName,
           fatherStatus,
@@ -403,14 +482,19 @@ export default function Dashboard({
         body: JSON.stringify(payload)
       });
 
+      const data = await res.json();
       if (res.ok) {
-        const data = await res.json();
         onUpdateMyProfile(data.profile);
         setUpdateSuccess(true);
-        setTimeout(() => setUpdateSuccess(false), 4000);
+        setTimeout(() => setUpdateSuccess(false), 5000);
+      } else {
+        throw new Error(data.error || "Failed to save profile. The server rejected the profile update.");
       }
-    } catch (e) {
-      console.error("Error updating profile", e);
+    } catch (err: any) {
+      console.error("Error updating profile", err);
+      const errMsg = err.message || "An unexpected network error occurred while saving profile changes.";
+      setUpdateError(errMsg);
+      alert("Error: " + errMsg);
     } finally {
       setLoading(false);
     }
@@ -439,11 +523,11 @@ export default function Dashboard({
           </p>
         </div>
 
-        {/* Custom Tab selectors - capsule style matching screenshot */}
-        <div className="flex bg-white border border-gray-300 p-1 rounded-full shadow-2xs gap-1 self-stretch sm:self-auto justify-between sm:justify-start">
+        {/* Custom Tab selectors - capsule style matching screenshot, responsive with horizontal swipe on mobile */}
+        <div className="flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-white border border-gray-300 p-1 rounded-2xl sm:rounded-full shadow-2xs gap-1.5 self-stretch sm:self-auto justify-start sm:justify-start whitespace-nowrap">
           <button
             onClick={() => setActiveTab("matches")}
-            className={`px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+            className={`px-4 sm:px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer shrink-0 ${
               activeTab === "matches"
                 ? "bg-[#034435] text-white shadow-2xs"
                 : "text-gray-500 hover:text-emerald-950 hover:bg-gray-50"
@@ -453,7 +537,7 @@ export default function Dashboard({
           </button>
           <button
             onClick={() => setActiveTab("favorites")}
-            className={`px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`px-4 sm:px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 shrink-0 ${
               activeTab === "favorites"
                 ? "bg-[#034435] text-white shadow-2xs"
                 : "text-gray-500 hover:text-emerald-950 hover:bg-gray-50"
@@ -463,7 +547,7 @@ export default function Dashboard({
           </button>
           <button
             onClick={() => setActiveTab("myprofile")}
-            className={`px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`px-4 sm:px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 shrink-0 ${
               activeTab === "myprofile"
                 ? "bg-[#034435] text-white shadow-2xs"
                 : "text-gray-500 hover:text-emerald-950 hover:bg-gray-50"
@@ -526,14 +610,28 @@ export default function Dashboard({
               </button>
             </form>
 
-            {/* Custom Horizontal Expandable Trigger */}
-            <button
-              onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
-              className="w-full py-3 bg-white border border-gray-200 rounded-2xl font-bold text-xs uppercase tracking-wider text-emerald-950 flex items-center justify-center gap-2.5 cursor-pointer shadow-3xs hover:bg-gray-50/50 hover:border-emerald-800/20 transition-all"
-            >
-              <Sliders className="w-4 h-4 text-amber-500 shrink-0" />
-              <span>{mobileFiltersOpen ? "Hide Advanced Filters" : "Show Advanced Filters"}</span>
-            </button>
+            {/* Custom Horizontal Controls: Filters Trigger & Sort Dropdown */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <button
+                onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+                className="py-3 bg-white border border-gray-200 rounded-2xl font-bold text-xs uppercase tracking-wider text-emerald-950 flex items-center justify-center gap-2.5 cursor-pointer shadow-3xs hover:bg-gray-50/50 hover:border-emerald-800/20 transition-all"
+              >
+                <Sliders className="w-4 h-4 text-amber-500 shrink-0" />
+                <span>{mobileFiltersOpen ? "Hide Advanced Filters" : "Show Advanced Filters"}</span>
+              </button>
+
+              <div className="relative flex items-center bg-white border border-gray-200 rounded-2xl px-4 py-1.5 shadow-3xs hover:border-emerald-800/20 transition-all">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mr-2 shrink-0">Sort By:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as "newest" | "default")}
+                  className="w-full bg-transparent text-xs font-bold text-emerald-950 focus:outline-none border-none py-2 cursor-pointer"
+                >
+                  <option value="newest">🆕 Newly Created (Recent Joins)</option>
+                  <option value="default">🤝 Default Matching Order</option>
+                </select>
+              </div>
+            </div>
 
             {/* Collapsible Horizontal Bento Filters Panel */}
             <AnimatePresence>
@@ -556,7 +654,7 @@ export default function Dashboard({
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                     {/* Sect Column */}
                     <div className="space-y-3">
                       <span className="block text-xs font-bold uppercase tracking-wider text-gray-500">Sect (Deen Wing)</span>
@@ -599,6 +697,54 @@ export default function Dashboard({
                               }`}
                             >
                               {district}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    
+                    {/* Education Column */}
+                    <div className="space-y-3">
+                      <span className="block text-xs font-bold uppercase tracking-wider text-gray-500">Education Group</span>
+                      <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+                        {Object.values(EducationType).map((edu) => {
+                          const isChecked = selectedEducations.includes(edu);
+                          return (
+                            <button
+                              key={edu}
+                              type="button"
+                              onClick={() => handleToggleEdu(edu)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                                isChecked
+                                  ? "bg-emerald-50 text-emerald-900 border-emerald-900 shadow-3xs"
+                                  : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                              }`}
+                            >
+                              {edu}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Marital Status Column */}
+                    <div className="space-y-3">
+                      <span className="block text-xs font-bold uppercase tracking-wider text-gray-500">Marital Status</span>
+                      <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+                        {["Never Married", "Divorced", "Widowed", "Awaiting Divorce", "Separated"].map((status) => {
+                          const isChecked = selectedMaritalStatuses.includes(status);
+                          return (
+                            <button
+                              key={status}
+                              type="button"
+                              onClick={() => handleToggleMaritalStatus(status)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                                isChecked
+                                  ? "bg-emerald-50 text-emerald-900 border-emerald-900 shadow-3xs"
+                                  : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                              }`}
+                            >
+                              {status}
                             </button>
                           );
                         })}
@@ -667,6 +813,30 @@ export default function Dashboard({
           {/* TAB: Matches Results */}
           {activeTab === "matches" && (
             <div>
+              {/* Deactivated Notice Banner */}
+              {(currentUserProfile?.status === "Inactive" || currentUserProfile?.isDeactivated) && (
+                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-3xs max-w-7xl mx-auto">
+                  <div className="flex items-start gap-3">
+                    <span className="p-2 bg-amber-100 rounded-full text-amber-800 shrink-0">
+                      <AlertCircle className="w-5 h-5" />
+                    </span>
+                    <div>
+                      <h5 className="text-xs font-bold text-amber-950 uppercase tracking-wider">Your Profile is Temporarily Inactive</h5>
+                      <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                        Your profile is currently hidden from recommendations and search listings. Feel free to browse, but other candidates cannot find you until you reactivate!
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleToggleDeactivate}
+                    className="px-4 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-bold transition-all whitespace-nowrap self-stretch sm:self-auto text-center cursor-pointer"
+                  >
+                    Reactivate Profile Now
+                  </button>
+                </div>
+              )}
+
               {/* Preferences matching filter switch */}
               {currentUserProfile?.isVerified && (
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 bg-white border border-gray-150 p-4 rounded-2xl shadow-3xs max-w-7xl mx-auto gap-4">
@@ -727,13 +897,24 @@ export default function Dashboard({
                       💡 <strong>Tip for quick approval:</strong> Make sure you have entered correct details, specified education, and added a clear profile photo.
                     </p>
                   </div>
-                  <div>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
                     <button
                       onClick={() => setActiveTab("myprofile")}
-                      className="px-4 py-2 bg-emerald-900 text-white rounded-lg text-xs font-semibold uppercase tracking-wider hover:bg-emerald-800 cursor-pointer active:scale-98 transition-all"
+                      className="px-4 py-2.5 bg-emerald-900 text-white rounded-xl text-xs font-semibold uppercase tracking-wider hover:bg-emerald-800 cursor-pointer active:scale-98 transition-all"
                     >
                       Complete Profile Details
                     </button>
+                    <a
+                      href={`https://wa.me/919496538664?text=Assalamu%20Alaikum%20Admin,%20I%20have%20registered%20on%20KalyanHub.%20Please%20verify%20my%20profile.%20My%20Name:%20${encodeURIComponent(currentUserProfile?.fullName || "")}%20ID:%20${encodeURIComponent(currentUserProfile?.id || "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white font-semibold rounded-xl text-xs uppercase tracking-wider hover:bg-emerald-700 transition-all shadow-xs"
+                    >
+                      <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                        <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.457L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.42 9.864-9.852.002-2.63-1.023-5.101-2.887-6.968C16.683 1.968 14.211 1.01 11.582 1.01 6.15 1.01 1.725 5.43 1.72 10.862c-.001 1.702.447 3.366 1.301 4.8l-.426 1.556 1.595-.418zM17.487 14.39c-.322-.162-1.91-.942-2.203-1.049-.293-.108-.507-.162-.72.162-.213.324-.827 1.049-1.014 1.265-.187.215-.373.242-.695.08-.322-.162-1.36-.5-2.59-1.6-.957-.852-1.602-1.905-1.79-2.228-.187-.324-.02-.499.141-.659.145-.144.322-.377.483-.565.161-.188.215-.323.322-.539.107-.215.053-.404-.027-.565-.08-.162-.72-1.742-.987-2.388-.26-.627-.525-.541-.72-.551-.186-.01-.4-.01-.614-.01-.213 0-.56.08-.853.404-.293.324-1.12 1.096-1.12 2.673 0 1.578 1.147 3.1 1.307 3.315.16.215 2.257 3.447 5.47 4.832.763.329 1.36.525 1.824.673.768.243 1.467.209 2.02.127.616-.093 1.91-.78 2.176-1.496.267-.717.267-1.328.187-1.457-.08-.129-.294-.216-.615-.378z" />
+                      </svg>
+                      Notify Admin on WhatsApp
+                    </a>
                   </div>
                 </div>
               ) : profiles.length === 0 ? (
@@ -908,7 +1089,7 @@ export default function Dashboard({
                   {/* Mock profile avatar */}
                   <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 border border-emerald-900/10 shadow-xs relative shrink-0">
                     <img
-                      src={currentUserProfile?.photos[0] || "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=200"}
+                      src={currentUserProfile?.photos[0] || getAvatarPlaceholder(currentUserProfile?.gender || "Female", currentUserProfile?.id)}
                       alt=""
                       className="w-full h-full object-cover"
                     />
@@ -1226,20 +1407,8 @@ export default function Dashboard({
                     <div className="space-y-2">
                       <span className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Select From Premium Avatars</span>
                       <div className="grid grid-cols-4 gap-2">
-                        {(currentUserProfile?.gender === "Female"
-                          ? [
-                              "https://images.unsplash.com/photo-1594744803329-e58b31de215f?auto=format&fit=crop&q=80&w=600",
-                              "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=600",
-                              "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=600",
-                              "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=600"
-                            ]
-                          : [
-                              "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=600",
-                              "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=600",
-                              "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=600",
-                              "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=600"
-                            ]
-                        ).map((presetUrl, idx) => (
+                        {[1, 2, 3, 4].map((variantNum) => getAvatarPlaceholder(currentUserProfile?.gender || "Female", variantNum))
+                        .map((presetUrl, idx) => (
                           <button
                             key={idx}
                             type="button"
@@ -1368,6 +1537,50 @@ export default function Dashboard({
                         }`}
                       />
                     </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-gray-500">Profile Created For Whom</span>
+                      <select
+                        value={editProfileFor}
+                        onChange={(e) => setEditProfileFor(e.target.value as any)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-800 bg-white"
+                      >
+                        <option value="Self">Self</option>
+                        <option value="Son">Son</option>
+                        <option value="Daughter">Daughter</option>
+                        <option value="Brother">Brother</option>
+                        <option value="Sister">Sister</option>
+                        <option value="Parent">Parent</option>
+                        <option value="Relative">Relative</option>
+                        <option value="Friend">Friend</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-gray-500">Marital Status</span>
+                      <select
+                        value={editMaritalStatus}
+                        onChange={(e) => setEditMaritalStatus(e.target.value as any)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-800 bg-white"
+                      >
+                        <option value="Never Married">Never Married</option>
+                        <option value="Divorced">Divorced</option>
+                        <option value="Widowed">Widowed</option>
+                        <option value="Awaiting Divorce">Awaiting Divorce</option>
+                        <option value="Separated">Separated</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <span className="text-gray-500">Confidential Contact Address (Hides from non-premium)</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. Baitul Noor, Hill Palace Road, Ernakulam"
+                        value={editAddress}
+                        onChange={(e) => setEditAddress(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-800 bg-white"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1423,19 +1636,14 @@ export default function Dashboard({
                     </div>
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center">
-                        <span className="text-gray-500">Annual Income Range</span>
-                        {(!editIncome || editIncome === "Not specified" || editIncome.trim() === "") && (
-                          <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 animate-pulse">Missing info</span>
-                        )}
+                        <span className="text-gray-500">Annual Income Range (Optional)</span>
                       </div>
                       <input
                         type="text"
                         placeholder="e.g. ₹10L - ₹12L per annum"
                         value={editIncome}
                         onChange={(e) => setEditIncome(e.target.value)}
-                        className={`w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-1 focus:ring-emerald-800 bg-white ${
-                          (!editIncome || editIncome === "Not specified" || editIncome.trim() === "") ? "border-amber-300 ring-1 ring-amber-50" : "border-gray-200"
-                        }`}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-800 bg-white"
                       />
                     </div>
                   </div>
@@ -1464,21 +1672,40 @@ export default function Dashboard({
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500">Father's Employment</span>
-                        {(!fatherOcc || fatherOcc === "Not specified" || fatherOcc.trim() === "") && (
-                          <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 animate-pulse">Missing info</span>
-                        )}
-                      </div>
-                      <input
-                        type="text"
-                        value={fatherOcc}
-                        onChange={(e) => setFatherOcc(e.target.value)}
-                        className={`w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-1 focus:ring-emerald-800 bg-white ${
-                          (!fatherOcc || fatherOcc === "Not specified" || fatherOcc.trim() === "") ? "border-amber-300 ring-1 ring-amber-50" : "border-gray-200"
-                        }`}
-                      />
+                      <span className="text-gray-500">Father's Status</span>
+                      <select
+                        value={fatherStatus}
+                        onChange={(e) => {
+                          const val = e.target.value as "Alive" | "Passed Away";
+                          setFatherStatus(val);
+                          if (val === "Passed Away") {
+                            setFatherOcc("");
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-800 bg-white"
+                      >
+                        <option value="Alive">Alive</option>
+                        <option value="Passed Away">Passed Away</option>
+                      </select>
                     </div>
+                    {fatherStatus === "Alive" && (
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500">Father's Employment</span>
+                          {(!fatherOcc || fatherOcc === "Not specified" || fatherOcc.trim() === "") && (
+                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 animate-pulse">Missing info</span>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={fatherOcc}
+                          onChange={(e) => setFatherOcc(e.target.value)}
+                          className={`w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-1 focus:ring-emerald-800 bg-white ${
+                            (!fatherOcc || fatherOcc === "Not specified" || fatherOcc.trim() === "") ? "border-amber-300 ring-1 ring-amber-50" : "border-gray-200"
+                          }`}
+                        />
+                      </div>
+                    )}
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center">
                         <span className="text-gray-500">Mother's Name</span>
@@ -1597,11 +1824,24 @@ export default function Dashboard({
                 </div>
 
                 {/* Save button */}
-                <div className="pt-4 border-t border-gray-100 flex justify-end">
+                <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="flex-1 max-w-md">
+                    {updateError && (
+                      <div className="px-3.5 py-2 bg-rose-50 border border-rose-200 text-rose-750 text-xs rounded-lg flex items-center gap-1.5 font-medium animate-pulse">
+                        <span>⚠️ Error: {updateError}</span>
+                      </div>
+                    )}
+                    {updateSuccess && (
+                      <div className="px-3.5 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg flex items-center gap-1.5 font-medium">
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        <span>Profile updated successfully!</span>
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="px-6 py-2.5 bg-emerald-900 text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-emerald-800 cursor-pointer transition-colors shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-6 py-2.5 bg-emerald-900 text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-emerald-800 cursor-pointer transition-colors shadow-xs flex items-center justify-center gap-1.5 disabled:opacity-50 sm:self-end"
                   >
                     {loading ? (
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1613,6 +1853,149 @@ export default function Dashboard({
                   </button>
                 </div>
               </form>
+
+              {/* PASSWORD UPDATE SECTION */}
+              <div className="mt-8 pt-8 border-t border-gray-150">
+                <div className="bg-white rounded-2xl border border-gray-150 p-6 sm:p-8 shadow-3xs max-w-2xl">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Lock className="w-5 h-5 text-emerald-800" />
+                    <h4 className="font-serif text-base font-bold text-emerald-950">Update Account Password</h4>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-6 leading-relaxed">
+                    Keep your account secure by updating your password. Make sure it is strong and easy to remember.
+                  </p>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    const form = e.currentTarget;
+                    const currentPassword = (form.elements.namedItem("currentPassword") as HTMLInputElement).value;
+                    const newPassword = (form.elements.namedItem("newPassword") as HTMLInputElement).value;
+                    const confirmPassword = (form.elements.namedItem("confirmPassword") as HTMLInputElement).value;
+                    
+                    if (newPassword !== confirmPassword) {
+                      alert("New passwords do not match!");
+                      return;
+                    }
+                    
+                    try {
+                      const res = await fetch("/api/auth/update-password", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ currentPassword, newPassword })
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        alert("Password updated successfully!");
+                        form.reset();
+                      } else {
+                        alert(data.error || "Failed to update password");
+                      }
+                    } catch (err) {
+                      console.error(err);
+                      alert("An error occurred. Please try again.");
+                    }
+                  }} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">Current Password</span>
+                        <input
+                          name="currentPassword"
+                          type="password"
+                          required
+                          placeholder="••••••"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-250 focus:outline-none focus:ring-1 focus:ring-emerald-800 bg-white text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">New Password</span>
+                        <input
+                          name="newPassword"
+                          type="password"
+                          required
+                          placeholder="••••••"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-250 focus:outline-none focus:ring-1 focus:ring-emerald-800 bg-white text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wider">Confirm New Password</span>
+                        <input
+                          name="confirmPassword"
+                          type="password"
+                          required
+                          placeholder="••••••"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-250 focus:outline-none focus:ring-1 focus:ring-emerald-800 bg-white text-xs"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="submit"
+                        className="px-5 py-2 bg-emerald-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-emerald-800 transition-colors cursor-pointer"
+                      >
+                        Change Password
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+              {/* Account Status & Danger Zone Block */}
+              <div className="bg-white border border-gray-150 rounded-2xl shadow-sm overflow-hidden mt-6" id="danger_zone_section">
+                <div className="bg-amber-50/30 border-b border-gray-150 p-4 sm:p-5 flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-amber-700" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-950">Account Status & Danger Zone</span>
+                </div>
+                <div className="p-5 space-y-6">
+                  {/* Temporary Deactivation Option */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold text-gray-900 flex items-center gap-2">
+                        <span>Temporary Deactivation</span>
+                        {currentUserProfile?.status === "Inactive" || currentUserProfile?.isDeactivated ? (
+                          <span className="inline-flex items-center px-2 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-bold rounded-md">Currently Inactive</span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-bold rounded-md">Currently Active</span>
+                        )}
+                      </h4>
+                      <p className="text-[11px] text-gray-500 leading-relaxed max-w-2xl">
+                        {(currentUserProfile?.status === "Inactive" || currentUserProfile?.isDeactivated)
+                          ? "Your profile is currently deactivated. No other matrimony candidates can see you in searches or matches. You can reactivate anytime to become visible again."
+                          : "Temporarily deactivate your profile to hide it from all other users on the portal. You can still log in, browse, and reactivate whenever you are ready."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleDeactivate}
+                      className={`px-4 py-2 text-xs font-bold rounded-xl transition-all uppercase tracking-wider self-start md:self-auto cursor-pointer ${
+                        currentUserProfile?.status === "Inactive" || currentUserProfile?.isDeactivated
+                          ? "bg-emerald-900 hover:bg-emerald-800 text-white"
+                          : "bg-amber-600 hover:bg-amber-700 text-white"
+                      }`}
+                    >
+                      {currentUserProfile?.status === "Inactive" || currentUserProfile?.isDeactivated ? "Reactivate Profile" : "Deactivate Profile"}
+                    </button>
+                  </div>
+
+                  {/* Permanent Deletion Option */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 border border-red-100 bg-red-50/10 rounded-xl">
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold text-red-900 flex items-center gap-2">
+                        <Trash2 className="w-4 h-4 text-red-700" />
+                        <span>Permanent Account Deletion</span>
+                      </h4>
+                      <p className="text-[11px] text-gray-500 leading-relaxed max-w-2xl">
+                        Deleting your account will permanently erase your profile details, family setup, and photos from the registry. You will be logged out immediately and cannot log in with this account ever again.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleDeleteAccount}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl uppercase tracking-wider transition-all self-start md:self-auto cursor-pointer"
+                    >
+                      Delete Account Permanently
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>

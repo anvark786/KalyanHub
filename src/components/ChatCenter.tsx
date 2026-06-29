@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Profile, Message, ChatThread } from "../types";
 import { Send, RefreshCw, ShieldAlert, ArrowLeft, Check, CheckCheck, HelpCircle, Sparkles } from "lucide-react";
+import { getAvatarPlaceholder } from "../utils/avatar";
 import { motion } from "motion/react";
 
 interface ChatCenterProps {
@@ -191,7 +192,7 @@ export default function ChatCenter({
                     }`}
                   >
                     <div className="w-11 h-11 rounded-full overflow-hidden shrink-0 bg-gray-200 border border-emerald-950/5 relative">
-                      <img src={thread.otherUser.photos[0]} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={thread.otherUser.photos[0] || getAvatarPlaceholder(thread.otherUser.gender, thread.otherUser.id)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       {thread.unreadCount > 0 && (
                         <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white" />
                       )}
@@ -248,7 +249,7 @@ export default function ChatCenter({
                   </button>
                   
                   <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 relative shrink-0">
-                    <img src={activeChatPartner.photos[0]} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={activeChatPartner.photos[0] || getAvatarPlaceholder(activeChatPartner.gender, activeChatPartner.id)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   </div>
                   <div>
                     <h4 className="font-serif text-sm font-bold text-emerald-950 flex items-center gap-1">

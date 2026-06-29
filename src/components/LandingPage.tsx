@@ -5,7 +5,7 @@
 
 import React, { useState } from "react";
 import { District, Sect } from "../types";
-import { Search, Shield, Heart, Users, MessageSquare, Star, ArrowRight, UserCheck, Sparkles } from "lucide-react";
+import { Search, Shield, Heart, Users, MessageSquare, Star, ArrowRight, UserCheck, Sparkles, Lock, EyeOff, CameraOff, Copy } from "lucide-react";
 import { motion } from "motion/react";
 
 interface LandingPageProps {
@@ -30,21 +30,6 @@ export default function LandingPage({ onStartSearch, onOpenAuth }: LandingPagePr
       sect: quickSect !== "ALL" ? (quickSect as Sect) : undefined,
     });
   };
-
-  const successStories = [
-    {
-      names: "Dr. Shareef & Dr. Jasmine",
-      location: "Kozhikode & Malappuram",
-      story: "We found our perfect match through KalyanHub in May 2025. Both families were extremely happy with the transparency of information, especially the detailed family background checks.",
-      image: "https://images.unsplash.com/photo-1583939003579-730e3918a45a?auto=format&fit=crop&q=80&w=600"
-    },
-    {
-      names: "Nihal & Aisha Nisrin",
-      location: "Ernakulam & Dubai (NRI)",
-      story: "Being an NRI in Dubai, finding a partner who matches my professional background and is willing to relocate was a challenge. KalyanHub's advanced filters made it so simple to connect.",
-      image: "https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&q=80&w=600"
-    }
-  ];
 
   return (
     <div className="relative overflow-hidden bg-[#faf8f5]" id="landing_page_container">
@@ -202,7 +187,7 @@ export default function LandingPage({ onStartSearch, onOpenAuth }: LandingPagePr
                       onChange={(e) => setQuickSect(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl border border-gray-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-800 bg-white"
                     >
-                      <option value="ALL">Any Sect (No bar)</option>
+                      <option value="ALL">General Muslim (Any Sect)</option>
                       {Object.values(Sect).map((s) => (
                         <option key={s} value={s}>
                           {s}
@@ -300,43 +285,66 @@ export default function LandingPage({ onStartSearch, onOpenAuth }: LandingPagePr
         </div>
       </div>
 
-      {/* Success Stories Section */}
+      {/* Premium Security & Privacy Shield Section */}
       <div className="py-24 bg-white border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="text-[10px] font-bold text-amber-600 tracking-widest uppercase">Verified Union Narratives</span>
-            <h2 className="font-serif text-3xl text-emerald-950 font-bold mt-2">Blessed Matrimonies Made Possible</h2>
-            <div className="w-12 h-[3px] bg-amber-500 mx-auto mt-3 rounded-full" />
+          <div className="text-center max-w-3xl mx-auto mb-16 space-y-3">
+            <span className="text-[10px] font-bold text-amber-600 tracking-widest uppercase bg-amber-500/10 px-3.5 py-1.5 rounded-full border border-amber-500/20">
+              Honorable &amp; Private Matrimony
+            </span>
+            <h2 className="font-serif text-3xl text-emerald-950 font-bold mt-2">
+              KalyanHub Security &amp; Privacy Shield
+            </h2>
+            <p className="text-xs text-gray-500 max-w-lg mx-auto font-sans leading-relaxed">
+              We employ advanced client and server security layers to protect our members' dignity, photos, and biodata from unauthorized exposure.
+            </p>
+            <div className="w-12 h-[3px] bg-amber-500 mx-auto mt-4 rounded-full" />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-5xl mx-auto">
-            {successStories.map((story, idx) => (
-              <div key={idx} className="bg-[#faf8f5] rounded-3xl border border-gray-150/40 shadow-sm overflow-hidden flex flex-col sm:flex-row transition-all hover:shadow-md hover:border-emerald-900/10 group">
-                <div className="sm:w-2/5 h-48 sm:h-auto relative overflow-hidden">
-                  <img
-                    src={story.image}
-                    alt={story.names}
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-emerald-950/40 to-transparent sm:hidden" />
-                </div>
-                <div className="sm:w-3/5 p-6 sm:p-8 flex flex-col justify-between space-y-6 bg-white">
-                  <div className="space-y-3">
-                    <div className="flex text-amber-500 gap-0.5">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} className="w-3.5 h-3.5 fill-current" />
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-500 italic font-sans leading-relaxed">"{story.story}"</p>
-                  </div>
-                  <div>
-                    <h4 className="font-serif font-bold text-sm text-emerald-950">{story.names}</h4>
-                    <span className="text-[10px] text-amber-700 uppercase tracking-widest font-semibold">{story.location}</span>
-                  </div>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-6xl mx-auto">
+            {/* Feature 1 */}
+            <div className="bg-[#faf8f5]/80 p-8 rounded-3xl border border-amber-200/10 shadow-sm hover:shadow-md hover:border-emerald-900/10 transition-all group hover:-translate-y-0.5 duration-300">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 mb-6 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300">
+                <CameraOff className="w-5 h-5" />
               </div>
-            ))}
+              <h3 className="font-serif font-bold text-base text-emerald-950">Screenshot &amp; Print Blocker</h3>
+              <p className="text-[11px] text-gray-500 mt-3 leading-relaxed font-sans">
+                Detects PrintScreen and blocks Ctrl+P/Cmd+P print actions to trigger a real-time full-screen privacy lockout, preventing digital captures.
+              </p>
+            </div>
+
+            {/* Feature 2 */}
+            <div className="bg-[#faf8f5]/80 p-8 rounded-3xl border border-amber-200/10 shadow-sm hover:shadow-md hover:border-emerald-900/10 transition-all group hover:-translate-y-0.5 duration-300">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 mb-6 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300">
+                <Lock className="w-5 h-5" />
+              </div>
+              <h3 className="font-serif font-bold text-base text-emerald-950">Image Theft Deterrent</h3>
+              <p className="text-[11px] text-gray-500 mt-3 leading-relaxed font-sans">
+                Right-clicks, long presses, and image dragging are fully disabled on profile photos. Members' pictures cannot be saved or shared.
+              </p>
+            </div>
+
+            {/* Feature 3 */}
+            <div className="bg-[#faf8f5]/80 p-8 rounded-3xl border border-amber-200/10 shadow-sm hover:shadow-md hover:border-emerald-900/10 transition-all group hover:-translate-y-0.5 duration-300">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 mb-6 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300">
+                <Copy className="w-5 h-5" />
+              </div>
+              <h3 className="font-serif font-bold text-base text-emerald-950">Anti-Scraping Copy Shield</h3>
+              <p className="text-[11px] text-gray-500 mt-3 leading-relaxed font-sans">
+                Raw clipboard copy triggers are intercepted. Copying member details, biodata sheets, or descriptions is forbidden for data protection.
+              </p>
+            </div>
+
+            {/* Feature 4 */}
+            <div className="bg-[#faf8f5]/80 p-8 rounded-3xl border border-amber-200/10 shadow-sm hover:shadow-md hover:border-emerald-900/10 transition-all group hover:-translate-y-0.5 duration-300">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 mb-6 group-hover:bg-amber-500 group-hover:text-white transition-all duration-300">
+                <EyeOff className="w-5 h-5" />
+              </div>
+              <h3 className="font-serif font-bold text-base text-emerald-950">Gated Contact Masking</h3>
+              <p className="text-[11px] text-gray-500 mt-3 leading-relaxed font-sans">
+                Full names, mobile numbers, and house coordinates are masked and locked behind administrative authorization to prevent spam.
+              </p>
+            </div>
           </div>
         </div>
       </div>

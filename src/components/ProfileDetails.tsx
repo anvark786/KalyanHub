@@ -79,7 +79,7 @@ export default function ProfileDetails({
             {/* Main Active Photo with Golden Trim */}
             <div className="relative aspect-square rounded-2xl overflow-hidden bg-gray-100 shadow-md border-2 border-amber-500/10">
               <img
-                src={profile.photos[activePhoto] || getAvatarPlaceholder(profile.gender)}
+                src={profile.photos[activePhoto] || getAvatarPlaceholder(profile.gender, profile.id)}
                 alt={profile.fullName}
                 referrerPolicy="no-referrer"
                 className={`w-full h-full object-cover transition-all duration-300 ${isBlurred ? "blur-2xl scale-105 select-none pointer-events-none" : ""}`}
@@ -180,13 +180,24 @@ export default function ProfileDetails({
 
             <div className="pt-4 border-t border-gray-200/60">
               {unlockedPhone ? (
-                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex flex-col items-center justify-center space-y-2 text-center">
-                  <span className="text-[9px] text-emerald-800 font-bold uppercase tracking-widest">Confidential Contact</span>
-                  <a href={`tel:${unlockedPhone}`} className="text-base font-bold text-emerald-950 flex items-center gap-1.5 font-mono">
-                    <Phone className="w-4 h-4 text-amber-600" />
-                    {unlockedPhone}
-                  </a>
-                  <p className="text-[10px] text-gray-500">Vouched by KalyanHub Head Office</p>
+                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex flex-col items-center justify-center space-y-3 text-center">
+                  <div>
+                    <span className="text-[9px] text-emerald-800 font-bold uppercase tracking-widest">Confidential Phone</span>
+                    <a href={`tel:${unlockedPhone}`} className="text-base font-bold text-emerald-950 flex items-center justify-center gap-1.5 font-mono mt-0.5">
+                      <Phone className="w-4 h-4 text-amber-600 shrink-0" />
+                      {unlockedPhone}
+                    </a>
+                  </div>
+                  {profile.address && (
+                    <div className="pt-2.5 border-t border-emerald-100 w-full">
+                      <span className="text-[9px] text-emerald-800 font-bold uppercase tracking-widest">Verified Address</span>
+                      <p className="text-xs font-semibold text-emerald-950 mt-1 flex items-center justify-center gap-1 leading-normal">
+                        <Home className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        {profile.address}
+                      </p>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-gray-500 pt-1">Vouched by KalyanHub Head Office</p>
                 </div>
               ) : (
                 <button
@@ -238,6 +249,13 @@ export default function ProfileDetails({
                   <div className="flex items-center gap-1.5 text-white">
                     <Home className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     <span>{profile.family?.nativePlace || "Kerala"}</span>
+                  </div>
+                </div>
+                <div className="space-y-1 col-span-1 sm:col-span-2 pt-1 border-t border-white/5">
+                  <span className="text-emerald-300 font-medium block uppercase text-[9px] tracking-wider">Candidate Direct Address (Admin View)</span>
+                  <div className="flex items-start gap-1.5 text-white leading-relaxed">
+                    <Home className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                    <span>{profile.address || "Not specified"}</span>
                   </div>
                 </div>
               </div>
@@ -296,6 +314,20 @@ export default function ProfileDetails({
               <MapPin className="w-4 h-4 text-emerald-800/80 mx-auto mb-1.5" />
               <div className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">District</div>
               <div className="text-xs font-bold text-emerald-950 mt-0.5">{profile.district}</div>
+            </div>
+          </div>
+
+          {/* Section: Relationship & Marital Status */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 bg-[#faf8f5] rounded-2xl border border-gray-100 text-center">
+              <Users className="w-4 h-4 text-emerald-800/80 mx-auto mb-1.5" />
+              <div className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Profile Created For</div>
+              <div className="text-xs font-bold text-emerald-950 mt-0.5">{profile.profileFor || "Self"}</div>
+            </div>
+            <div className="p-4 bg-[#faf8f5] rounded-2xl border border-gray-100 text-center">
+              <Heart className="w-4 h-4 text-emerald-800/80 mx-auto mb-1.5" />
+              <div className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Marital Status</div>
+              <div className="text-xs font-bold text-emerald-950 mt-0.5">{profile.maritalStatus || "Never Married"}</div>
             </div>
           </div>
 

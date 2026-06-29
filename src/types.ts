@@ -88,6 +88,9 @@ export interface Profile {
   family: FamilyDetails;
   phone: string;
   email?: string;
+  maritalStatus?: "Never Married" | "Divorced" | "Widowed" | "Awaiting Divorce" | "Separated";
+  address?: string;
+  profileFor?: "Self" | "Son" | "Daughter" | "Brother" | "Sister" | "Parent" | "Relative" | "Friend";
   isPhotoBlurred?: boolean;
   photoAccessApprovedUsers?: string[]; // list of profile IDs approved to view photos
   photoAccessRequestsReceived?: string[]; // list of profile IDs who requested photo access
@@ -100,6 +103,9 @@ export interface Profile {
   status?: "Active" | "Inactive";
   inactiveReason?: string;
   partnerPreference?: PartnerPreference;
+  createdAt?: string;
+  isDeactivated?: boolean;
+  isDeleted?: boolean;
 }
 
 export interface User {
@@ -116,6 +122,11 @@ export interface User {
   paymentProofSubmittedAt?: string;
   revealedProfileIds?: string[]; // list of profile IDs revealed
   isAdmin?: boolean;
+  userType?: "standard" | "promotional";
+  createdAt?: string;
+  lastLoginAt?: string;
+  isDeactivated?: boolean;
+  isDeleted?: boolean;
 }
 
 export interface Message {

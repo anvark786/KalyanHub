@@ -6,6 +6,7 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
+import nodemailer from "nodemailer";
 import { Sect, District, EducationType, Profile, User, Message } from "./src/types";
 import { SAMPLE_PROFILES } from "./src/data";
 import { initializeApp } from "firebase-admin/app";
@@ -15,7 +16,22 @@ import fs from "fs";
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ limit: "15mb", extended: true }));
+
+// Sliding session expiration middleware (30 minutes)
+app.use((req, res, next) => {
+  const cookieHeader = req.headers.cookie || "";
+  const match = cookieHeader.match(/session_user_id=([^;]+)/);
+  let userId = match ? match[1] : null;
+  if (!userId) {
+    userId = req.headers["x-user-id"] as string || null;
+  }
+  if (userId && req.url.startsWith("/api/") && !req.url.startsWith("/api/auth/logout")) {
+    res.setHeader("Set-Cookie", `session_user_id=${userId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=1800`);
+  }
+  next();
+});
 
 // Load Firebase configuration
 const configPath = path.join(process.cwd(), "firebase-applet-config.json");
@@ -36,147 +52,81 @@ if (fs.existsSync(configPath)) {
   console.log("firebase-applet-config.json not found. Falling back to in-memory store.");
 }
 
-// In-Memory Database Fallbacks (used if DB is null, or as seed sources)
-const inMemoryProfiles: Profile[] = [...SAMPLE_PROFILES];
-inMemoryProfiles.forEach(p => {
-  p.isPhotoBlurred = p.id === "prof_3" || p.id === "prof_5"; // Blur Aisha and Thasni
-  p.photoAccessApprovedUsers = p.photoAccessApprovedUsers || [];
-  p.photoAccessRequestsReceived = p.photoAccessRequestsReceived || [];
-});
+// In-Memory Database Fallbacks (used if DB is null)
+const inMemoryProfiles: Profile[] = [];
+const inMemoryUsers: User[] = [];
+const inMemoryMessages: Message[] = [];
 
-const inMemoryUsers: User[] = [
-  {
-    id: "user_anvar",
-    email: "mohammedanvark@gmail.com",
-    fullName: "Mohammed Anvar",
-    gender: "Male",
-    profileId: "prof_user_anvar",
-    favorites: ["prof_1", "prof_3", "prof_5"],
-    isPaid: false, // Start as free to see the premium features/limits
-    paymentProof: "",
-    paymentProofStatus: "none",
-    revealedProfileIds: []
-  }
-];
-
-// Set mock incoming requests for Anvar's own profile so he can test approving them!
-const targetAnvarProfileId = "prof_user_anvar";
-inMemoryProfiles.forEach(p => {
-  if (p.id === targetAnvarProfileId) {
-    p.photoAccessRequestsReceived = ["prof_1", "prof_3"]; // Incoming requests from Fathima and Aisha
-  }
-});
-
-// Add Anvar's profile to the list as well to simulate a logged in profile that other mock profiles can interact with!
-const userAnvarProfile: Profile = {
-  id: "prof_user_anvar",
-  fullName: "Mohammed Anvar",
-  gender: "Male",
-  age: 26,
-  height: 175,
-  weight: 71,
-  district: District.Malappuram,
-  sect: Sect.Sunni_EK,
-  education: EducationType.Engineer,
-  educationDetails: "B.Tech in Computer Science, CET",
-  occupation: "Software Engineer",
-  company: "AI Studio Build",
-  incomeRange: "₹15L - ₹18L per annum",
-  aboutMe: "Hi, I am Mohammed Anvar. I am a tech professional looking for a life partner with moral values and an understanding nature.",
-  religiousPractice: "Practicing",
-  hobbies: ["Football", "Coding", "Reading", "Traveling"],
-  photos: [
-    "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=600"
-  ],
-  isVerified: true,
-  verifiedDate: "2026-06-26",
-  family: {
-    fatherName: "K. Muhammed Haji",
-    fatherOccupation: "Merchant",
-    motherName: "Pathumma Muhammed",
-    motherOccupation: "Homemaker",
-    familyStatus: "Upper Middle Class",
-    familyValues: "Moderate",
-    siblingsDetails: "One sister married and settled, one brother studying",
-    nativePlace: "Manjeri, Malappuram"
-  },
-  phone: "+91 9000000000"
-};
-
-// Insert if not exists
-if (!inMemoryProfiles.some(p => p.id === userAnvarProfile.id)) {
-  inMemoryProfiles.push(userAnvarProfile);
+// Seed Firestore with initial data if empty (Disabled to prevent dummy/SAMPLE data from filling the real database)
+async function seedDatabaseIfEmpty() {
+  return;
 }
 
-// Store messages with some initial conversation history to make the messaging system look rich right away
-const inMemoryMessages: Message[] = [
-  {
-    id: "msg_init_1",
-    senderId: "prof_1", // Fathima Riza
-    receiverId: "user_anvar",
-    content: "Assalamu Alaikum. I saw your profile and found it matching. Would love to know more about your family background.",
-    timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), // 2 hours ago
-    isRead: false
-  },
-  {
-    id: "msg_init_2",
-    senderId: "user_anvar",
-    receiverId: "prof_1",
-    content: "Walaikum Assalam, Fathima. Thank you for reaching out. Yes, we belong to Manjeri, Malappuram. My family values are traditional yet moderate.",
-    timestamp: new Date(Date.now() - 3600000 * 1.5).toISOString(), // 1.5 hours ago
-    isRead: true
-  },
-  {
-    id: "msg_init_3",
-    senderId: "prof_1", // Fathima Riza
-    receiverId: "user_anvar",
-    content: "That sounds wonderful. My family is from Kondotty, so we are quite close geographically. Let's discuss further.",
-    timestamp: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-    isRead: false
-  },
-  {
-    id: "msg_init_4",
-    senderId: "prof_3", // Aisha Nisrin
-    receiverId: "user_anvar",
-    content: "Hi Anvar, saw your profile. Do you prefer someone settled in Ernakulam, or are you open to moving?",
-    timestamp: new Date(Date.now() - 3600000 * 5).toISOString(), // 5 hours ago
-    isRead: true
+// Helper to recursively remove undefined properties for Firestore compatibility
+function cleanFirestoreData(data: any): any {
+  if (data === undefined) {
+    return null;
   }
-];
-
-// Seed Firestore with initial data if empty
-async function seedDatabaseIfEmpty() {
-  if (!db) return;
-  try {
-    const profilesCount = (await db.collection("profiles").limit(1).get()).size;
-    if (profilesCount === 0) {
-      console.log("Firestore database is empty. Seeding data...");
-      
-      // Seed profiles
-      for (const p of inMemoryProfiles) {
-        if (p.id === "prof_user_anvar") {
-          p.photoAccessRequestsReceived = ["prof_1", "prof_3"];
-        }
-        await db.collection("profiles").doc(p.id).set(p);
-      }
-
-      // Seed users
-      for (const u of inMemoryUsers) {
-        await db.collection("users").doc(u.id).set(u);
-      }
-
-      // Seed messages
-      for (const m of inMemoryMessages) {
-        await db.collection("messages").doc(m.id).set(m);
-      }
-
-      console.log("Firestore seeding completed successfully.");
-    } else {
-      console.log("Firestore database already contains data. Seeding skipped.");
+  if (data === null || typeof data !== "object") {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data.map(cleanFirestoreData);
+  }
+  const result: any = {};
+  for (const key of Object.keys(data)) {
+    if (data[key] !== undefined) {
+      result[key] = cleanFirestoreData(data[key]);
     }
-  } catch (err) {
-    console.error("Error seeding Firestore database:", err);
   }
+  return result;
+}
+
+// Self-healing helper to ensure every registered user has a valid bio profile in the system
+async function ensureUserProfileExists(user: User): Promise<Profile> {
+  let profile = await getProfile(user.profileId);
+  if (!profile) {
+    console.log(`Self-healing triggered: Profile ${user.profileId} was missing for user ${user.id} (${user.email}). Auto-creating...`);
+    profile = {
+      id: user.profileId,
+      fullName: user.fullName,
+      gender: user.gender,
+      age: 25,
+      height: 165,
+      weight: 60,
+      district: District.Malappuram,
+      sect: Sect.General,
+      education: EducationType.Graduate,
+      educationDetails: "Graduate (Default)",
+      occupation: "Not specified",
+      incomeRange: "Not specified",
+      aboutMe: `Hello, I am ${user.fullName}. I have recently joined KalyanHub to find my suitable life partner.`,
+      religiousPractice: "Moderate",
+      hobbies: [],
+      photos: [],
+      isVerified: user.isAdmin,
+      verifiedDate: user.isAdmin ? new Date().toISOString().split('T')[0] : undefined,
+      family: {
+        fatherName: "Not specified",
+        fatherStatus: "Alive",
+        fatherOccupation: "Not specified",
+        motherName: "Not specified",
+        motherOccupation: "Not specified",
+        familyStatus: "Middle Class",
+        familyValues: "Moderate",
+        siblingsDetails: "Not specified",
+        nativePlace: "Malappuram",
+      },
+      phone: "+91 9999999999",
+      photoAccessApprovedUsers: [],
+      photoAccessRequestsReceived: [],
+      maritalStatus: "Never Married",
+      profileFor: "Self",
+      address: ""
+    };
+    await saveProfile(profile);
+  }
+  return profile;
 }
 
 // Data fetching helper functions
@@ -199,7 +149,6 @@ async function getProfile(id: string): Promise<Profile | null> {
       if (doc.exists) {
         return doc.data() as Profile;
       }
-      return null;
     } catch (err) {
       console.error(`Failed to fetch profile ${id} from Firestore, using in-memory fallback:`, err);
     }
@@ -210,8 +159,7 @@ async function getProfile(id: string): Promise<Profile | null> {
 async function saveProfile(profile: Profile): Promise<void> {
   if (db) {
     try {
-      await db.collection("profiles").doc(profile.id).set(profile);
-      return;
+      await db.collection("profiles").doc(profile.id).set(cleanFirestoreData(profile));
     } catch (err) {
       console.error(`Failed to save profile ${profile.id} to Firestore, using in-memory fallback:`, err);
     }
@@ -243,7 +191,6 @@ async function getUser(id: string): Promise<User | null> {
       if (doc.exists) {
         return doc.data() as User;
       }
-      return null;
     } catch (err) {
       console.error(`Failed to fetch user ${id} from Firestore, using in-memory fallback:`, err);
     }
@@ -254,8 +201,7 @@ async function getUser(id: string): Promise<User | null> {
 async function saveUser(user: User): Promise<void> {
   if (db) {
     try {
-      await db.collection("users").doc(user.id).set(user);
-      return;
+      await db.collection("users").doc(user.id).set(cleanFirestoreData(user));
     } catch (err) {
       console.error(`Failed to save user ${user.id} to Firestore, using in-memory fallback:`, err);
     }
@@ -283,7 +229,7 @@ async function getMessages(): Promise<Message[]> {
 async function saveMessage(msg: Message): Promise<void> {
   if (db) {
     try {
-      await db.collection("messages").doc(msg.id).set(msg);
+      await db.collection("messages").doc(msg.id).set(cleanFirestoreData(msg));
       return;
     } catch (err) {
       console.error(`Failed to save message ${msg.id} to Firestore, using in-memory fallback:`, err);
@@ -316,18 +262,281 @@ async function updateMessageReadStatus(senderId: string, receiverId: string): Pr
   });
 }
 
-// Helper to get active user
-let currentUserId = "user_anvar"; // Default session
+// Helper to get active user based on session cookie (each visitor gets their own device session)
+async function getAuthenticatedUser(req: express.Request): Promise<User | null> {
+  const cookieHeader = req.headers.cookie || "";
+  const match = cookieHeader.match(/session_user_id=([^;]+)/);
+  let userId = match ? match[1] : null;
+  
+  if (!userId) {
+    // Fallback to custom header to support iframe environments where cookies might be blocked
+    userId = req.headers["x-user-id"] as string || null;
+  }
+  
+  if (!userId) return null;
+  const user = await getUser(userId);
+  if (user && user.isDeleted) return null;
+  return user;
+}
+
+// Promotional Access Configuration (Persisted in Firestore or locally in memory)
+let disableAllPromotionalAccess = false;
+let enableRealOtp = false;
+
+async function loadPromoConfig() {
+  if (db) {
+    try {
+      const doc = await db.collection("settings").doc("promo_config").get();
+      if (doc.exists) {
+        disableAllPromotionalAccess = !!doc.data()?.disableAllPromotionalAccess;
+        console.log("Loaded promotional access config. Disabled:", disableAllPromotionalAccess);
+      }
+    } catch (err) {
+      console.error("Failed to load promo config from Firestore:", err);
+    }
+  }
+}
+
+async function savePromoConfig(disabled: boolean): Promise<void> {
+  disableAllPromotionalAccess = disabled;
+  if (db) {
+    try {
+      await db.collection("settings").doc("promo_config").set({ disableAllPromotionalAccess: disabled });
+    } catch (err) {
+      console.error("Failed to save promo config to Firestore:", err);
+    }
+  }
+}
+
+async function loadOtpConfig() {
+  if (db) {
+    try {
+      const doc = await db.collection("settings").doc("otp_config").get();
+      if (doc.exists) {
+        enableRealOtp = !!doc.data()?.enableRealOtp;
+        console.log("Loaded OTP config. enableRealOtp:", enableRealOtp);
+      }
+    } catch (err) {
+      console.error("Failed to load OTP config from Firestore:", err);
+    }
+  }
+}
+
+async function saveOtpConfig(enabled: boolean): Promise<void> {
+  enableRealOtp = enabled;
+  if (db) {
+    try {
+      await db.collection("settings").doc("otp_config").set({ enableRealOtp: enabled });
+    } catch (err) {
+      console.error("Failed to save OTP config to Firestore:", err);
+    }
+  }
+}
+
+function getUserType(user: User | undefined | null): "admin" | "paid" | "promotional" | "free" {
+  if (!user) return "free";
+  if (user.isAdmin) return "admin";
+  if (user.isPaid) return "paid";
+  if (user.userType === "promotional" && !disableAllPromotionalAccess) {
+    return "promotional";
+  }
+  return "free";
+}
+
+function isUserPremium(user: User | undefined | null): boolean {
+  const ut = getUserType(user);
+  return ut === "admin" || ut === "paid" || ut === "promotional";
+}
+
+function prepareUserResponse(user: User): User {
+  return {
+    ...user,
+    isPaid: isUserPremium(user)
+  };
+}
+
+interface OtpEntry {
+  code: string;
+  expiresAt: number;
+  flow: "register" | "reset";
+}
+
+const otpStore = new Map<string, OtpEntry>();
+
+const getTransporter = () => {
+  const host = process.env.SMTP_HOST;
+  const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (host && user && pass) {
+    return nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: {
+        user,
+        pass
+      }
+    });
+  }
+  return null;
+};
+
+async function sendVerificationOtp(email: string, flow: "register" | "reset"): Promise<{ success: boolean; emailSent: boolean; devCode?: string; error?: string }> {
+  const code = enableRealOtp 
+    ? Math.floor(1000 + Math.random() * 9000).toString()
+    : "2026";
+
+  otpStore.set(email.toLowerCase(), {
+    code,
+    expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+    flow
+  });
+
+  if (!enableRealOtp) {
+    console.log(`[SMTP Disabled / Real OTP Off] Verification OTP for ${email}: ${code}`);
+    return { success: true, emailSent: false, devCode: code };
+  }
+
+  const transporter = getTransporter();
+  const from = process.env.SMTP_FROM || `"KalyanHub" <noreply@kalyanhub.com>`;
+  const subject = flow === "register" ? "Verify Your KalyanHub Registration" : "Reset Your KalyanHub Password";
+  
+  const htmlContent = `
+    <div style="font-family: 'Inter', Helvetica, Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+      <div style="background-color: #064e3b; padding: 32px 24px; border-radius: 12px; text-align: center;">
+        <h1 style="color: #ffffff; margin: 0; font-family: Georgia, serif; font-size: 26px; font-weight: bold; letter-spacing: 0.5px;">KalyanHub</h1>
+        <p style="color: #a7f3d0; margin: 6px 0 0 0; font-size: 11px; text-transform: uppercase; font-weight: 700; letter-spacing: 1.5px;">Verified Matrimony Network</p>
+      </div>
+      <div style="padding: 24px 8px; color: #1e293b;">
+        <h2 style="font-size: 18px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px;">Assalamu Alaikum,</h2>
+        <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 24px;">
+          ${flow === "register" 
+            ? "Thank you for registering a profile on KalyanHub Matrimony. To complete your registration and verify this email belongs to you, please use the 4-digit OTP code below:" 
+            : "A password reset request was initiated for your KalyanHub account. To proceed with setting up a new security password, please use the 4-digit verification code below:"}
+        </p>
+        <div style="margin: 32px 0; text-align: center;">
+          <span style="display: inline-block; padding: 14px 40px; background-color: #f0fdf4; border: 2px dashed #059669; border-radius: 12px; font-size: 34px; font-weight: 800; letter-spacing: 6px; color: #065f46; font-family: monospace;">
+            ${code}
+          </span>
+        </div>
+        <p style="font-size: 13px; line-height: 1.5; color: #64748b; margin-bottom: 0;">
+          This OTP code is highly secure and valid for exactly <strong>10 minutes</strong>. If you did not make this request, you can safely ignore this message.
+        </p>
+      </div>
+      <div style="padding: 16px 24px; background-color: #f8fafc; border-radius: 12px; text-align: center; border-top: 1px solid #f1f5f9;">
+        <p style="font-size: 11px; color: #94a3b8; margin: 0; font-weight: 500;">
+          © 2026 KalyanHub Muslim Matrimony. All rights reserved.
+        </p>
+      </div>
+    </div>
+  `;
+
+  if (transporter) {
+    try {
+      await transporter.sendMail({
+        from,
+        to: email,
+        subject,
+        html: htmlContent,
+        text: `Assalamu Alaikum. Your verification code is: ${code}. Valid for 10 minutes.`
+      });
+      console.log(`[SMTP] Successfully sent OTP to ${email}`);
+      return { success: true, emailSent: true };
+    } catch (err: any) {
+      console.error("[SMTP Error] Failed to send email via SMTP, falling back to developer sandbox mode:", err);
+      return { success: true, emailSent: false, devCode: code, error: err.message || String(err) };
+    }
+  } else {
+    console.log(`[SMTP Not Configured] Verification OTP for ${email}: ${code}`);
+    return { success: true, emailSent: false, devCode: code, error: "SMTP configuration not found in environment variables." };
+  }
+}
 
 // --- API ROUTES ---
 
 // Auth Routes
+app.post("/api/auth/send-register-otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "Email is required." });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: "Please enter a valid email address." });
+    }
+
+    const allUsers = await getUsers();
+    const existing = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (existing) {
+      return res.status(400).json({ error: "Email already registered." });
+    }
+
+    const result = await sendVerificationOtp(email, "register");
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to send verification code." });
+  }
+});
+
 app.post("/api/auth/register", async (req, res) => {
-  const { email, password, fullName, gender, age, height, district, sect, education, occupation, phone } = req.body;
+  const { 
+    email, 
+    password, 
+    fullName, 
+    gender, 
+    age, 
+    height, 
+    district, 
+    sect, 
+    education, 
+    occupation, 
+    phone,
+    fatherName,
+    fatherStatus,
+    fatherOccupation,
+    motherName,
+    motherOccupation,
+    siblingsDetails,
+    aboutMe,
+    maritalStatus,
+    profileFor,
+    address,
+    otpCode
+  } = req.body;
   
   if (!email || !fullName || !gender) {
     return res.status(400).json({ error: "Missing required fields" });
   }
+
+  if (!otpCode) {
+    return res.status(400).json({ error: "Verification code (OTP) is required." });
+  }
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: "Please enter a valid email address." });
+  }
+
+  // Validate OTP code
+  const otpRecord = otpStore.get(email.toLowerCase());
+  if (!otpRecord || otpRecord.flow !== "register") {
+    return res.status(400).json({ error: "No active verification session found. Please request a verification OTP." });
+  }
+  if (otpRecord.expiresAt < Date.now()) {
+    otpStore.delete(email.toLowerCase());
+    return res.status(400).json({ error: "Verification OTP code has expired. Please send a new code." });
+  }
+  if (otpRecord.code !== otpCode) {
+    return res.status(400).json({ error: "Incorrect verification OTP. Please enter the code sent to your email." });
+  }
+
+  // Verification successful! Clean up OTP
+  otpStore.delete(email.toLowerCase());
 
   const allUsers = await getUsers();
   const existing = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
@@ -352,29 +561,34 @@ app.post("/api/auth/register", async (req, res) => {
     educationDetails: "Not specified",
     occupation: occupation || "Not specified",
     incomeRange: "Not specified",
-    aboutMe: `Hello, I am ${fullName}. I have recently joined KalyanHub to find my suitable life partner.`,
+    aboutMe: aboutMe || `Hello, I am ${fullName}. I have recently joined KalyanHub to find my suitable life partner.`,
     religiousPractice: "Moderate",
     hobbies: [],
-    photos: [
-      gender === "Female" 
-        ? "https://images.unsplash.com/photo-1594744803329-e58b31de215f?auto=format&fit=crop&q=80&w=600" 
-        : "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=600"
-    ],
+    photos: [], // Use cartoon SVG placeholders
     isVerified: isAdmin,
     verifiedDate: isAdmin ? new Date().toISOString().split('T')[0] : undefined,
     family: {
-      fatherName: "Not specified",
-      fatherOccupation: "Not specified",
-      motherName: "Not specified",
-      motherOccupation: "Not specified",
+      fatherName: fatherName || "Not specified",
+      fatherStatus: fatherStatus || "Alive",
+      fatherOccupation: fatherStatus === "Passed Away" ? "" : (fatherOccupation || "Not specified"),
+      motherName: motherName || "Not specified",
+      motherOccupation: motherOccupation || "Not specified",
       familyStatus: "Middle Class",
       familyValues: "Moderate",
-      siblingsDetails: "Not specified",
+      siblingsDetails: siblingsDetails || "Not specified",
       nativePlace: district as string || "Malappuram",
     },
     phone: phone || "+91 9999999999",
     photoAccessApprovedUsers: [],
-    photoAccessRequestsReceived: []
+    photoAccessRequestsReceived: [],
+    maritalStatus: maritalStatus || "Never Married",
+    profileFor: profileFor || "Self",
+    address: address || "",
+    createdAt: new Date().toISOString(),
+    lastLoginAt: new Date().toISOString(),
+    status: "Active",
+    isDeactivated: false,
+    isDeleted: false
   };
 
   const newUser: User = {
@@ -389,14 +603,18 @@ app.post("/api/auth/register", async (req, res) => {
     paymentProof: "",
     paymentProofStatus: "none",
     revealedProfileIds: [],
-    isAdmin
+    isAdmin,
+    userType: "promotional",
+    createdAt: new Date().toISOString(),
+    isDeactivated: false,
+    isDeleted: false
   };
 
   await saveProfile(newProfile);
   await saveUser(newUser);
-  currentUserId = userId; // Log in
+  res.setHeader("Set-Cookie", `session_user_id=${userId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=1800`);
 
-  res.json({ user: newUser, profile: newProfile });
+  res.json({ user: prepareUserResponse(newUser), profile: newProfile });
 });
 
 app.post("/api/auth/login", async (req, res) => {
@@ -412,6 +630,9 @@ app.post("/api/auth/login", async (req, res) => {
   let user = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
   
   if (user) {
+    if (user.isDeleted) {
+      return res.status(403).json({ error: "This account has been permanently deleted and cannot be logged into." });
+    }
     const correctPassword = user.password || (email.toLowerCase().includes("admin") ? "admin123" : "123456");
     if (password !== correctPassword) {
       return res.status(401).json({ 
@@ -486,73 +707,45 @@ app.post("/api/auth/login", async (req, res) => {
     }
   }
 
-  currentUserId = user.id;
-  const profile = await getProfile(user.profileId);
-  res.json({ user, profile });
+  res.setHeader("Set-Cookie", `session_user_id=${user.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=1800`);
+  
+  // Reactivate user and update lastLoginAt upon login
+  user.isDeactivated = false;
+  user.lastLoginAt = new Date().toISOString();
+  await saveUser(user);
+
+  const profile = await ensureUserProfileExists(user);
+  profile.lastLoginAt = new Date().toISOString();
+  profile.isDeactivated = false;
+  profile.status = "Active";
+  await saveProfile(profile);
+
+  res.json({ user: prepareUserResponse(user), profile });
 });
 
 app.post("/api/auth/logout", (req, res) => {
-  // We can reset current session or just return success
+  res.setHeader("Set-Cookie", "session_user_id=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
   res.json({ success: true });
 });
 
-app.post("/api/auth/find-account", async (req, res) => {
+app.post("/api/auth/forgot-password", async (req, res) => {
   try {
-    const { phone, fullName } = req.body;
-    if (!phone && !fullName) {
-      return res.status(400).json({ error: "Please enter a phone number or full name to find your account." });
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "Email is required." });
     }
 
-    const allProfiles = await getProfiles();
     const allUsers = await getUsers();
-    
-    let matchedProfiles = allProfiles;
-
-    if (phone) {
-      const cleanSearchPhone = phone.replace(/[^0-9]/g, "");
-      if (cleanSearchPhone.length >= 8) {
-        matchedProfiles = matchedProfiles.filter(p => {
-          const cleanProfilePhone = (p.phone || "").replace(/[^0-9]/g, "");
-          return cleanProfilePhone.includes(cleanSearchPhone) || cleanSearchPhone.includes(cleanProfilePhone);
-        });
-      } else {
-        return res.status(400).json({ error: "Please enter at least 8 digits of your phone number." });
-      }
+    const user = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (!user) {
+      return res.status(404).json({ error: "No account found with this email address." });
     }
 
-    if (fullName) {
-      const searchName = fullName.toLowerCase().trim();
-      matchedProfiles = matchedProfiles.filter(p => 
-        p.fullName.toLowerCase().includes(searchName)
-      );
-    }
-
-    const results = [];
-    for (const profile of matchedProfiles) {
-      const user = allUsers.find(u => u.profileId === profile.id);
-      if (user) {
-        // Mask the email for basic privacy, but keep it clear for evaluation
-        const parts = user.email.split("@");
-        const maskedLocal = parts[0].length > 3 
-          ? parts[0].slice(0, 2) + "***" + parts[0].slice(-1) 
-          : parts[0] + "***";
-        const maskedEmail = maskedLocal + "@" + (parts[1] || "gmail.com");
-
-        results.push({
-          fullName: profile.fullName,
-          phone: profile.phone,
-          email: user.email, // Return full email for auto-login ease
-          maskedEmail: maskedEmail,
-          district: profile.district,
-          sect: profile.sect,
-          gender: profile.gender
-        });
-      }
-    }
-
-    res.json({ accounts: results });
+    // Send reset password OTP
+    const result = await sendVerificationOtp(user.email, "reset");
+    res.json({ email: user.email, ...result });
   } catch (error: any) {
-    res.status(500).json({ error: error.message || "Failed to lookup account." });
+    res.status(500).json({ error: error.message || "Failed to initiate password reset." });
   }
 });
 
@@ -560,15 +753,24 @@ app.post("/api/auth/reset-password", async (req, res) => {
   try {
     const { email, otpCode, newPassword } = req.body;
     if (!email || !otpCode || !newPassword) {
-      return res.status(400).json({ error: "Email, simulated OTP verification code, and new password are required." });
-    }
-
-    if (otpCode !== "2026") {
-      return res.status(400).json({ error: "Invalid OTP code. For security simulation, please use the OTP code '2026'." });
+      return res.status(400).json({ error: "Email, OTP verification code, and new password are required." });
     }
 
     if (newPassword.length < 6) {
       return res.status(400).json({ error: "Password must be at least 6 characters long." });
+    }
+
+    // Verify OTP code
+    const otpRecord = otpStore.get(email.toLowerCase());
+    if (!otpRecord || otpRecord.flow !== "reset") {
+      return res.status(400).json({ error: "No active password reset session found. Please request a verification OTP." });
+    }
+    if (otpRecord.expiresAt < Date.now()) {
+      otpStore.delete(email.toLowerCase());
+      return res.status(400).json({ error: "Verification OTP code has expired. Please try again." });
+    }
+    if (otpRecord.code !== otpCode) {
+      return res.status(400).json({ error: "Incorrect verification OTP. Please enter the code sent to your email." });
     }
 
     const allUsers = await getUsers();
@@ -577,6 +779,8 @@ app.post("/api/auth/reset-password", async (req, res) => {
       return res.status(404).json({ error: "User account not found." });
     }
 
+    // Success! Update password and clean up OTP
+    otpStore.delete(email.toLowerCase());
     user.password = newPassword;
     await saveUser(user);
 
@@ -587,12 +791,12 @@ app.post("/api/auth/reset-password", async (req, res) => {
 });
 
 app.get("/api/auth/me", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
-  const profile = await getProfile(user.profileId);
-  res.json({ user, profile });
+  const profile = await ensureUserProfileExists(user);
+  res.json({ user: prepareUserResponse(user), profile });
 });
 
 function formatProfileCode(profile: any): string {
@@ -655,6 +859,7 @@ function sanitizeProfileForUser(profile: Profile, requestingUser?: User): any {
       profileCode,
       photos,
       phone: "+91 ••••••••••",
+      address: "••••••••••••••••••••••••",
       isBlurred: profile.isPhotoBlurred === true
     };
   }
@@ -668,6 +873,14 @@ function sanitizeProfileForUser(profile: Profile, requestingUser?: User): any {
   if (!isOwner && !isPaid && !hasRevealed) {
     const orig = profile.phone || "";
     phone = orig.substring(0, Math.max(0, orig.length - 6)) + "••••••";
+  }
+
+  // Mask Address
+  let address = profile.address || "";
+  if (address) {
+    if (!isOwner && !isPaid && !hasRevealed) {
+      address = "••••••••••••••••••••••••";
+    }
   }
 
   // Blur photos logic
@@ -700,6 +913,7 @@ function sanitizeProfileForUser(profile: Profile, requestingUser?: User): any {
     profileCode,
     photos,
     phone,
+    address,
     isBlurred,
     photoAccessRequested,
     photoAccessApproved,
@@ -715,7 +929,7 @@ function sanitizeProfileForUser(profile: Profile, requestingUser?: User): any {
 
 // 1. Upload payment proof
 app.post("/api/user/upload-payment-proof", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -735,7 +949,7 @@ app.post("/api/user/upload-payment-proof", async (req, res) => {
 
 // 2. Simulate payment approval (Demo bypass tool)
 app.post("/api/user/simulate-payment-approval", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -749,7 +963,7 @@ app.post("/api/user/simulate-payment-approval", async (req, res) => {
 
 // 3. Reveal Contact Phone
 app.post("/api/profiles/:id/reveal-contact", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -770,11 +984,28 @@ app.post("/api/profiles/:id/reveal-contact", async (req, res) => {
 
   const alreadyRevealed = user.revealedProfileIds.includes(targetId);
 
-  if (user.isPaid) {
+  const ut = getUserType(user);
+
+  if (ut === "admin" || ut === "paid") {
     if (!alreadyRevealed) {
       user.revealedProfileIds.push(targetId);
       await saveUser(user);
     }
+    return res.json({ success: true, phone: profile.phone });
+  }
+
+  if (ut === "promotional") {
+    if (alreadyRevealed) {
+      return res.json({ success: true, phone: profile.phone });
+    }
+    if (user.revealedProfileIds.length >= 10) {
+      return res.status(403).json({
+        error: "promo_limit_reached",
+        message: "Promotional limit reached. Under your promotional plan, you can only reveal up to 10 contact details. Please upgrade to lifetime Premium to unlock unlimited contacts!"
+      });
+    }
+    user.revealedProfileIds.push(targetId);
+    await saveUser(user);
     return res.json({ success: true, phone: profile.phone });
   }
 
@@ -798,7 +1029,7 @@ app.post("/api/profiles/:id/reveal-contact", async (req, res) => {
 
 // 4. Request photo access
 app.post("/api/profiles/:id/request-photo-access", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -824,7 +1055,7 @@ app.post("/api/profiles/:id/request-photo-access", async (req, res) => {
 
 // 5. Approve photo access
 app.post("/api/profiles/photo-access-requests/:requesterProfileId/approve", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -854,7 +1085,7 @@ app.post("/api/profiles/photo-access-requests/:requesterProfileId/approve", asyn
 
 // 6. Reject photo access
 app.post("/api/profiles/photo-access-requests/:requesterProfileId/reject", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -877,7 +1108,7 @@ app.post("/api/profiles/photo-access-requests/:requesterProfileId/reject", async
 
 // 7. Toggle photo blur option for owner
 app.post("/api/profiles/toggle-photo-blur", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -895,7 +1126,7 @@ app.post("/api/profiles/toggle-photo-blur", async (req, res) => {
 
 // 8. Get pending requests for current user
 app.get("/api/profiles/my-photo-requests", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -920,7 +1151,7 @@ app.get("/api/profiles/my-photo-requests", async (req, res) => {
 
 // Update Profile API
 app.post("/api/profiles/update", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not authorized" });
   }
@@ -943,7 +1174,7 @@ app.post("/api/profiles/update", async (req, res) => {
 
 // Profiles API with Filtering
 app.get("/api/profiles", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not authorized" });
   }
@@ -979,17 +1210,20 @@ app.get("/api/profiles", async (req, res) => {
     // Exclude inactive profiles (unless requester is admin)
     if (p.status === "Inactive" && !user?.isAdmin) return false;
 
+    // Exclude deactivated or deleted profiles (unless requester is admin)
+    if ((p.isDeactivated || p.isDeleted) && !user?.isAdmin) return false;
+
     // Filter by gender
     if (p.gender !== partnerGender) return false;
 
     // Verify verification (unless requester is admin)
     if (!p.isVerified && !user?.isAdmin) return false;
 
-    // Filter out users who have not logged in for last 3 weeks (21 days)
+    // Filter out users who have not logged in for last 14 days
     if (p.lastLoginAt) {
       const lastLoginTime = new Date(p.lastLoginAt).getTime();
-      const threeWeeksAgo = Date.now() - 21 * 24 * 60 * 60 * 1000;
-      if (lastLoginTime < threeWeeksAgo && !user?.isAdmin) {
+      const fourteenDaysAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
+      if (lastLoginTime < fourteenDaysAgo && !user?.isAdmin) {
         return false;
       }
     }
@@ -1001,6 +1235,7 @@ app.get("/api/profiles", async (req, res) => {
     sects,
     districts,
     educations,
+    maritalStatuses,
     minAge,
     maxAge,
     minHeight,
@@ -1022,6 +1257,11 @@ app.get("/api/profiles", async (req, res) => {
   if (educations) {
     const eduList = (educations as string).split(",");
     filtered = filtered.filter(p => eduList.includes(p.education));
+  }
+
+  if (maritalStatuses) {
+    const statusList = (maritalStatuses as string).split(",");
+    filtered = filtered.filter(p => statusList.includes(p.maritalStatus || "Never Married"));
   }
 
   if (minAge) {
@@ -1053,6 +1293,15 @@ app.get("/api/profiles", async (req, res) => {
     );
   }
 
+  const sortBy = req.query.sortBy as string || "newest";
+  if (sortBy === "newest") {
+    filtered.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
+    });
+  }
+
   // Return sanitized profiles with pagination support
   const sanitizedList = filtered.map(p => sanitizeProfileForUser(p, user || undefined));
   const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
@@ -1074,7 +1323,7 @@ app.get("/api/profiles", async (req, res) => {
 
 // Get Single Profile
 app.get("/api/profiles/:id", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not authorized" });
   }
@@ -1102,7 +1351,7 @@ app.get("/api/profiles/:id", async (req, res) => {
 
 // Favorites Toggle
 app.post("/api/profiles/:id/favorite", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -1126,7 +1375,7 @@ app.post("/api/profiles/:id/favorite", async (req, res) => {
 // Messages API
 // Get active chat threads with details
 app.get("/api/messages", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -1174,7 +1423,7 @@ app.get("/api/messages", async (req, res) => {
 
 // Get individual chat thread messages
 app.get("/api/messages/:otherProfileId", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -1198,7 +1447,7 @@ app.get("/api/messages/:otherProfileId", async (req, res) => {
 
 // Send Message
 app.post("/api/messages", async (req, res) => {
-  const user = await getUser(currentUserId);
+  const user = await getAuthenticatedUser(req);
   if (!user) {
     return res.status(401).json({ error: "Not logged in" });
   }
@@ -1218,7 +1467,17 @@ app.post("/api/messages", async (req, res) => {
            (msg.senderId === receiverId && msg.receiverId === userProfileId)
   );
 
-  if (!user.isPaid && !alreadyHasConversation) {
+  const ut = getUserType(user);
+
+  if (ut === "promotional") {
+    const sentCount = allMessages.filter(msg => msg.senderId === userProfileId).length;
+    if (sentCount >= 10) {
+      return res.status(403).json({
+        error: "promo_message_limit_reached",
+        message: "Promotional limit reached. You have sent 10 messages under the promotional plan. Please upgrade to permanent Premium to continue chatting!"
+      });
+    }
+  } else if (ut === "free" && !alreadyHasConversation) {
     return res.status(402).json({
       error: "payment_required",
       message: "Starting new chat conversations is limited on the Free tier. Please upgrade to Premium!"
@@ -1239,31 +1498,7 @@ app.post("/api/messages", async (req, res) => {
   // Return the sent message
   res.json(newMessage);
 
-  // OPTIONAL: Mock a fast reply from the matches to keep the user engaged in the applet demo!
-  if (receiverId.startsWith("prof_") && receiverId !== userProfileId) {
-    setTimeout(async () => {
-      const answers = [
-        "Assalamu Alaikum. Thanks for your message. I am currently discussing this with my parents and we will get back to you soon.",
-        "That's nice to hear. Can you please share more about your job profile and future plans?",
-        "Jazakallah Khair for reaching out. Yes, we can certainly speak. Let's arrange a time when our families can also join the call.",
-        "Hello. Your profile seems interesting. Could you please share your WhatsApp number or your father's contact so our elders can talk?",
-        "Thank you! I will look over your details with my family tonight and message you back."
-      ];
-      
-      const randomAnswer = answers[Math.floor(Math.random() * answers.length)];
-      
-      const botMessage: Message = {
-        id: `msg_bot_${Date.now()}`,
-        senderId: receiverId,
-        receiverId: userProfileId,
-        content: randomAnswer,
-        timestamp: new Date().toISOString(),
-        isRead: false
-      };
-      
-      await saveMessage(botMessage);
-    }, 4000); // 4 seconds delay for simulation
-  }
+
 });
 
 
@@ -1272,6 +1507,10 @@ app.post("/api/messages", async (req, res) => {
 app.get("/api/admin/users", async (req, res) => {
   try {
     const users = await getUsers();
+    // Auto-heal profiles for any users fetched in admin panel to prevent unlinked states
+    for (const u of users) {
+      await ensureUserProfileExists(u);
+    }
     res.json({ users });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to fetch users" });
@@ -1281,17 +1520,74 @@ app.get("/api/admin/users", async (req, res) => {
 app.post("/api/admin/users/:id/update-payment", async (req, res) => {
   try {
     const userId = req.params.id;
-    const { isPaid, paymentProofStatus } = req.body;
+    const { isPaid, paymentProofStatus, userType } = req.body;
     const user = await getUser(userId);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
     user.isPaid = !!isPaid;
     user.paymentProofStatus = paymentProofStatus || "none";
+    if (userType) {
+      user.userType = userType;
+    }
     await saveUser(user);
     res.json({ user });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to update user payment status" });
+  }
+});
+
+// Promotional Access Control
+app.get("/api/admin/promo-toggle", async (req, res) => {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    res.json({ disableAllPromotionalAccess });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to fetch promo toggle" });
+  }
+});
+
+app.post("/api/admin/promo-toggle", async (req, res) => {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const { disabled } = req.body;
+    await savePromoConfig(!!disabled);
+    res.json({ success: true, disableAllPromotionalAccess });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to update promo toggle" });
+  }
+});
+
+// Real OTP Toggle Control
+app.get("/api/admin/otp-toggle", async (req, res) => {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    res.json({ enableRealOtp });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to fetch OTP toggle" });
+  }
+});
+
+app.post("/api/admin/otp-toggle", async (req, res) => {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+    const { enabled } = req.body;
+    await saveOtpConfig(!!enabled);
+    res.json({ success: true, enableRealOtp });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to update OTP toggle" });
   }
 });
 
@@ -1350,7 +1646,7 @@ app.post("/api/admin/profiles/:id/update", async (req, res) => {
     };
 
     if (db) {
-      await db.collection("profiles").doc(profileId).set(mergedProfile, { merge: true });
+      await db.collection("profiles").doc(profileId).set(cleanFirestoreData(mergedProfile), { merge: true });
     }
 
     const idx = inMemoryProfiles.findIndex(p => p.id === profileId);
@@ -1433,10 +1729,16 @@ app.post("/api/admin/profiles/create", async (req, res) => {
       photoAccessRequestsReceived: [],
       photoAccessRejectedUsers: [],
       lastLoginAt: new Date().toISOString(),
-      status: "Active"
+      status: "Active",
+      maritalStatus: profileData.maritalStatus || "Never Married",
+      profileFor: profileData.profileFor || "Self",
+      address: profileData.address || "",
+      createdAt: new Date().toISOString(),
+      isDeactivated: false,
+      isDeleted: false
     };
 
-    const generatedPassword = generateStrongPassword();
+    const generatedPassword = profileData.password || generateStrongPassword();
     const userId = `user_gen_${Math.random().toString(36).substring(2, 15)}`;
     const emailAddress = profileData.email || `${profileData.fullName.toLowerCase().replace(/\s+/g, "")}@kalyanhub.com`;
 
@@ -1450,7 +1752,11 @@ app.post("/api/admin/profiles/create", async (req, res) => {
       favorites: [],
       isPaid: false,
       paymentProofStatus: "none",
-      revealedProfileIds: []
+      revealedProfileIds: [],
+      userType: profileData.userType || "standard",
+      createdAt: new Date().toISOString(),
+      isDeactivated: false,
+      isDeleted: false
     };
 
     await saveProfile(newProfile);
@@ -1469,7 +1775,7 @@ app.post("/api/admin/profiles/create", async (req, res) => {
 
 app.post("/api/auth/update-password", async (req, res) => {
   try {
-    const user = await getUser(currentUserId);
+    const user = await getAuthenticatedUser(req);
     if (!user) {
       return res.status(401).json({ error: "Not logged in" });
     }
@@ -1495,7 +1801,7 @@ app.post("/api/auth/update-password", async (req, res) => {
 
 app.post("/api/profiles/deactivate", async (req, res) => {
   try {
-    const user = await getUser(currentUserId);
+    const user = await getAuthenticatedUser(req);
     if (!user || !user.profileId) {
       return res.status(401).json({ error: "Not logged in" });
     }
@@ -1510,9 +1816,14 @@ app.post("/api/profiles/deactivate", async (req, res) => {
       return res.status(404).json({ error: "Profile not found" });
     }
 
+    const isInactive = status === "Inactive";
     profile.status = status;
     profile.inactiveReason = inactiveReason || "";
+    profile.isDeactivated = isInactive;
     await saveProfile(profile);
+
+    user.isDeactivated = isInactive;
+    await saveUser(user);
 
     res.json({ success: true, profile: sanitizeProfileForUser(profile, user) });
   } catch (error: any) {
@@ -1520,9 +1831,37 @@ app.post("/api/profiles/deactivate", async (req, res) => {
   }
 });
 
+app.post("/api/profiles/delete-account", async (req, res) => {
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) {
+      return res.status(401).json({ error: "Not logged in" });
+    }
+
+    user.isDeleted = true;
+    user.isDeactivated = true;
+    await saveUser(user);
+
+    if (user.profileId) {
+      const profile = await getProfile(user.profileId);
+      if (profile) {
+        profile.isDeleted = true;
+        profile.isDeactivated = true;
+        profile.status = "Inactive";
+        await saveProfile(profile);
+      }
+    }
+
+    res.setHeader("Set-Cookie", "session_user_id=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+    res.json({ success: true, message: "Account has been permanently deleted." });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to delete account" });
+  }
+});
+
 app.post("/api/admin/purge-all-data", async (req, res) => {
   try {
-    const user = await getUser(currentUserId);
+    const user = await getAuthenticatedUser(req);
     if (!user || !user.isAdmin) {
       return res.status(403).json({ error: "Unauthorized. Admin privileges required." });
     }
@@ -1619,6 +1958,39 @@ app.post("/api/admin/purge-all-data", async (req, res) => {
 
 app.post("/api/admin/reset-database", async (req, res) => {
   try {
+    const userAnvarProfile: Profile = {
+      id: "prof_user_anvar",
+      fullName: "Mohammed Anvar",
+      gender: "Male",
+      age: 28,
+      height: 176,
+      weight: 72,
+      district: District.Malappuram,
+      sect: Sect.Sunni_EK,
+      education: EducationType.Engineer,
+      educationDetails: "B.Tech Computer Science",
+      occupation: "Software Engineer",
+      incomeRange: "₹8L - ₹12L per annum",
+      aboutMe: "I am a practicing Muslim, working as a Software Engineer in Ernakulam. Looking for a religious and educated partner.",
+      religiousPractice: "Practicing",
+      hobbies: ["Reading", "Travel"],
+      photos: [],
+      isVerified: true,
+      family: {
+        fatherName: "K. Abdul Majeed",
+        fatherOccupation: "Merchant",
+        motherName: "Amina",
+        motherOccupation: "Homemaker",
+        familyStatus: "Middle Class",
+        familyValues: "Moderate",
+        siblingsDetails: "1 Brother, 1 Sister",
+        nativePlace: "Manjeri, Malappuram",
+      },
+      phone: "+91 9447000111",
+      photoAccessApprovedUsers: [],
+      photoAccessRequestsReceived: []
+    };
+
     if (db) {
       console.log("Resetting Firestore collections...");
       
@@ -1740,6 +2112,12 @@ async function startServer() {
 
   // Seed database if empty
   await seedDatabaseIfEmpty();
+
+  // Load promotional configuration
+  await loadPromoConfig();
+
+  // Load OTP configuration
+  await loadOtpConfig();
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

@@ -32,46 +32,113 @@ export default function AuthModal({ isOpen, onClose, initialMode, onSuccess }: A
   const [sect, setSect] = useState<Sect>(Sect.Sunni_EK);
   const [education, setEducation] = useState<EducationType>(EducationType.Graduate);
   const [occupation, setOccupation] = useState("");
+  const [maritalStatus, setMaritalStatus] = useState<"Never Married" | "Divorced" | "Widowed" | "Awaiting Divorce" | "Separated">("Never Married");
+  const [profileFor, setProfileFor] = useState<"Self" | "Son" | "Daughter" | "Brother" | "Sister" | "Parent" | "Relative" | "Friend">("Self");
+  const [address, setAddress] = useState("");
+
+  // Family & Self Details states for signup
+  const [fatherName, setFatherName] = useState("");
+  const [fatherStatus, setFatherStatus] = useState<"Alive" | "Passed Away">("Alive");
+  const [fatherOccupation, setFatherOccupation] = useState("");
+  const [motherName, setMotherName] = useState("");
+  const [motherOccupation, setMotherOccupation] = useState("");
+  const [siblingsDetails, setSiblingsDetails] = useState("");
+  const [aboutMe, setAboutMe] = useState("");
 
   // Account Finder / Forgot password state
-  const [forgotPhone, setForgotPhone] = useState("");
-  const [forgotName, setForgotName] = useState("");
-  const [forgotResults, setForgotResults] = useState<any[]>([]);
+  const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSearching, setForgotSearching] = useState(false);
   const [forgotError, setForgotError] = useState<string | null>(null);
 
-  // Password Reset / Simulated OTP states
+  // Password Reset states
   const [resettingEmail, setResettingEmail] = useState<string | null>(null);
   const [resetOtp, setResetOtp] = useState("");
   const [resetNewPassword, setResetNewPassword] = useState("");
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
   const [resetLoading, setResetLoading] = useState(false);
+  const [resetDevCode, setResetDevCode] = useState<string | null>(null);
+
+  // Register OTP flow states
+  const [registerOtpPending, setRegisterOtpPending] = useState(false);
+  const [registerOtp, setRegisterOtp] = useState("");
+  const [registerDevCode, setRegisterDevCode] = useState<string | null>(null);
+
+  // Reset form states on open or mode toggle to avoid leaking previous state
+  React.useEffect(() => {
+    setError(null);
+    setForgotError(null);
+    setResetError(null);
+    setResetSuccessMessage(null);
+    
+    // Reset specific input states
+    setEmail("");
+    setPassword("");
+    setPhone("");
+    setFullName("");
+    setGender("Female");
+    setAge("25");
+    setHeight("165");
+    setDistrict(District.Malappuram);
+    setSect(Sect.Sunni_EK);
+    setEducation(EducationType.Graduate);
+    setOccupation("");
+    setMaritalStatus("Never Married");
+    setProfileFor("Self");
+    setAddress("");
+    
+    setFatherName("");
+    setFatherStatus("Alive");
+    setFatherOccupation("");
+    setMotherName("");
+    setMotherOccupation("");
+    setSiblingsDetails("");
+    setAboutMe("");
+
+    setForgotEmail("");
+    setForgotSearching(false);
+
+    setResettingEmail(null);
+    setResetOtp("");
+    setResetNewPassword("");
+    setResetDevCode(null);
+
+    setRegisterOtpPending(false);
+    setRegisterOtp("");
+    setRegisterDevCode(null);
+  }, [isOpen, mode]);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+    }
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 
-  const handleFindAccount = async (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotError(null);
-    setForgotResults([]);
     setForgotSearching(true);
 
     try {
-      const response = await fetch("/api/auth/find-account", {
+      const response = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: forgotPhone, fullName: forgotName })
+        body: JSON.stringify({ email: forgotEmail })
       });
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "Failed to search for account.");
+        throw new Error(data.error || "Failed to initiate password reset.");
       }
 
-      setForgotResults(data.accounts || []);
-      if (data.accounts?.length === 0) {
-        setForgotError("No matching accounts found. Please check your registered name or phone number.");
-      }
+      setResettingEmail(data.email);
+      setResetOtp("");
+      setResetNewPassword("");
+      setResetError(null);
+      setResetSuccessMessage(null);
+      setResetDevCode(data.devCode || null);
     } catch (err: any) {
       setForgotError(err.message || "Failed to find account.");
     } finally {
@@ -82,13 +149,65 @@ export default function AuthModal({ isOpen, onClose, initialMode, onSuccess }: A
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address (e.g. user@example.com).");
+      return;
+    }
+
     setLoading(true);
 
     try {
+      if (mode === "signup" && !registerOtpPending) {
+        // Step 1: Send registration OTP
+        const response = await fetch("/api/auth/send-register-otp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to send registration verification code.");
+        }
+
+        setRegisterOtpPending(true);
+        setRegisterOtp("");
+        setRegisterDevCode(data.devCode || null);
+        setLoading(false);
+        return;
+      }
+
+      // Step 2: Final submit (Login or Register Verification)
       const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/register";
       const payload = mode === "login" 
         ? { email, password } 
-        : { email, password, phone, fullName, gender, age, height, district, sect, education, occupation };
+        : { 
+            email, 
+            password, 
+            phone, 
+            fullName, 
+            gender, 
+            age, 
+            height, 
+            district, 
+            sect, 
+            education, 
+            occupation,
+            fatherName,
+            fatherStatus,
+            fatherOccupation,
+            motherName,
+            motherOccupation,
+            siblingsDetails,
+            aboutMe,
+            maritalStatus,
+            profileFor,
+            address,
+            otpCode: registerOtp
+          };
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -142,9 +261,6 @@ export default function AuthModal({ isOpen, onClose, initialMode, onSuccess }: A
         setResetNewPassword("");
         setMode("login");
         setResetSuccessMessage(null);
-        setForgotResults([]);
-        setForgotPhone("");
-        setForgotName("");
       }, 2500);
     } catch (err: any) {
       setResetError(err.message || "Failed to reset password.");
@@ -176,19 +292,19 @@ export default function AuthModal({ isOpen, onClose, initialMode, onSuccess }: A
           <div className="bg-gradient-to-r from-emerald-900 to-emerald-850 text-white p-6 relative">
             <button
               onClick={onClose}
-              className="absolute right-4 top-4 text-emerald-100 hover:text-white hover:bg-emerald-800/50 p-1.5 rounded-full transition-colors cursor-pointer"
+              className="absolute right-4 top-4 text-white bg-emerald-800/40 hover:bg-emerald-700/60 p-1.5 rounded-full transition-colors cursor-pointer border border-emerald-500/20"
             >
               <X className="w-5 h-5" />
             </button>
-            <h3 className="font-serif text-2xl font-bold text-center">
-              {mode === "login" ? "Sign In to KalyanHub" : mode === "signup" ? "Create Matrimony Profile" : "Find Registered Account"}
+             <h3 className="font-serif text-2xl font-bold text-center">
+              {mode === "login" ? "Sign In to KalyanHub" : mode === "signup" ? "Create Matrimony Profile" : "Reset Password"}
             </h3>
             <p className="text-xs text-center text-emerald-100 mt-1">
               {mode === "login" 
                 ? "Access verified profiles and continue your search" 
                 : mode === "signup"
                   ? "Fill out your details to begin your matching journey"
-                  : "Forgot your registered email? Search here to find your account"}
+                  : "Enter your registered email to reset your security password"}
             </p>
           </div>
 
@@ -207,15 +323,11 @@ export default function AuthModal({ isOpen, onClose, initialMode, onSuccess }: A
                     <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-900/10">
                       <h4 className="font-serif text-sm font-bold text-emerald-950 flex items-center gap-1.5">
                         <Shield className="w-4 h-4 text-emerald-800" />
-                        Secure OTP Password Reset
+                        Security Password Reset
                       </h4>
                       <p className="text-[11px] text-gray-600 mt-1.5 leading-relaxed">
-                        We have simulated sending a secure 4-digit verification code to the registered mobile number of <span className="font-bold text-emerald-900">{resettingEmail}</span>.
+                        A secure 4-digit verification code has been sent to your registered email address <span className="font-bold text-emerald-900">{resettingEmail}</span>.
                       </p>
-                      <div className="mt-3.5 inline-flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-950 border border-amber-200 rounded-lg text-2xs font-mono font-bold animate-pulse">
-                        <span className="text-amber-800">🧪 SIMULATED OTP CODE:</span>
-                        <span className="underline decoration-2 text-amber-900">2026</span>
-                      </div>
                     </div>
 
                     {resetError && (
@@ -264,6 +376,17 @@ export default function AuthModal({ isOpen, onClose, initialMode, onSuccess }: A
                         </div>
                       </div>
 
+                      {resetDevCode && (
+                        <div className="p-3 bg-amber-50 text-amber-900 text-[11px] rounded-lg border border-amber-200 space-y-1">
+                          <div className="font-bold uppercase tracking-wider text-[10px] text-amber-800">
+                            Evaluation Sandbox Helper
+                          </div>
+                          <div>
+                            Since no SMTP settings are configured in `.env` yet, your generated OTP code is: <span className="font-mono font-bold text-sm bg-amber-100 px-1.5 py-0.5 rounded text-amber-950">{resetDevCode}</span>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex gap-3 pt-2">
                         <button
                           type="button"
@@ -294,35 +417,19 @@ export default function AuthModal({ isOpen, onClose, initialMode, onSuccess }: A
                       </div>
                     )}
 
-                    <form onSubmit={handleFindAccount} className="space-y-4">
+                    <form onSubmit={handleForgotPassword} className="space-y-4">
                       <div>
                         <label className="block text-2xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
-                          Your Registered Full Name (Optional)
+                          Registered Email Address
                         </label>
                         <div className="relative">
-                          <User className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                          <Mail className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
                           <input
-                            type="text"
-                            placeholder="e.g. Mohammed Anas"
-                            value={forgotName}
-                            onChange={(e) => setForgotName(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-800 focus:border-transparent"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-2xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
-                          Your Registered Mobile Number (Digits only, e.g. 9999999999)
-                        </label>
-                        <div className="relative font-mono">
-                          <span className="absolute left-3 top-2.5 text-xs text-gray-400 font-bold shrink-0">📱</span>
-                          <input
-                            type="tel"
+                            type="email"
                             required
-                            placeholder="e.g. 9876543210"
-                            value={forgotPhone}
-                            onChange={(e) => setForgotPhone(e.target.value)}
+                            placeholder="e.g. user@example.com"
+                            value={forgotEmail}
+                            onChange={(e) => setForgotEmail(e.target.value)}
                             className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-800 focus:border-transparent"
                           />
                         </div>
@@ -336,62 +443,86 @@ export default function AuthModal({ isOpen, onClose, initialMode, onSuccess }: A
                         {forgotSearching ? (
                           <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         ) : (
-                          "Find Registered Account"
+                          "Send Reset Code"
                         )}
                       </button>
                     </form>
-
-                    {forgotResults.length > 0 && (
-                      <div className="space-y-3 bg-emerald-50/40 border border-emerald-900/10 p-4 rounded-xl">
-                        <span className="block text-[10px] font-bold text-emerald-900 uppercase tracking-widest mb-1">Matching Account(s) Found ({forgotResults.length})</span>
-                        <div className="divide-y divide-gray-100 max-h-48 overflow-y-auto pr-1">
-                          {forgotResults.map((acc, index) => (
-                            <div key={index} className="py-3 flex items-center justify-between gap-4 first:pt-0 last:pb-0">
-                              <div>
-                                <p className="text-xs font-bold text-gray-800">{acc.fullName} <span className="text-[10px] text-gray-400 font-normal">({acc.gender})</span></p>
-                                <p className="text-[10px] text-gray-500">{acc.district} • {acc.sect}</p>
-                                <p className="text-[11px] font-mono font-semibold text-emerald-950 mt-1">
-                                  Email: <span className="underline">{acc.maskedEmail}</span>
-                                </p>
-                                <p className="text-[10px] text-gray-400">Phone: {acc.phone}</p>
-                              </div>
-                              <div className="flex flex-col gap-1.5 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEmail(acc.email);
-                                    setMode("login");
-                                    setForgotResults([]);
-                                    setForgotPhone("");
-                                    setForgotName("");
-                                    setForgotError(null);
-                                  }}
-                                  className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-2xs font-bold transition-all active:scale-95 shrink-0 cursor-pointer text-center"
-                                >
-                                  Use Account
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setResettingEmail(acc.email);
-                                    setResetOtp("");
-                                    setResetNewPassword("");
-                                    setResetError(null);
-                                    setResetSuccessMessage(null);
-                                  }}
-                                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-2xs font-bold transition-all active:scale-95 shrink-0 cursor-pointer text-center"
-                                >
-                                  Reset PIN
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </>
                 )}
               </div>
+            ) : registerOtpPending ? (
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="text-center space-y-2">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center">
+                    <Shield className="w-6 h-6 text-emerald-800 animate-pulse" />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900">Verify Your Email</h3>
+                  <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                    We sent a secure 4-digit verification OTP to <strong className="text-gray-700">{email}</strong>. Please enter the code below to complete your registration.
+                  </p>
+                </div>
+
+                {/* Error Banner */}
+                {error && (
+                  <div className="p-3 bg-red-50 text-red-700 text-xs rounded-lg border border-red-200">
+                    {error}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-2xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5 text-center">
+                    Enter 4-Digit OTP Code
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={4}
+                    pattern="\d{4}"
+                    placeholder="e.g. 1234"
+                    value={registerOtp}
+                    onChange={(e) => setRegisterOtp(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    className="w-40 mx-auto block text-center text-2xl font-bold tracking-[8px] py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-800 focus:border-transparent"
+                  />
+                </div>
+
+                {registerDevCode && (
+                  <div className="p-3.5 bg-amber-50 text-amber-900 text-[11px] rounded-lg border border-amber-200 space-y-1">
+                    <div className="font-bold uppercase tracking-wider text-[10px] text-amber-800">
+                      Evaluation Sandbox Helper
+                    </div>
+                    <div>
+                      Since no SMTP settings are configured in `.env` yet, your generated OTP code is: <span className="font-mono font-bold text-sm bg-amber-100 px-1.5 py-0.5 rounded text-amber-950">{registerDevCode}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 bg-emerald-900 hover:bg-emerald-800 text-white rounded-xl font-medium transition-colors shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 text-xs uppercase tracking-wider"
+                  >
+                    {loading ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      "Confirm & Create Profile"
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegisterOtpPending(false);
+                      setRegisterOtp("");
+                      setRegisterDevCode(null);
+                      setError(null);
+                    }}
+                    className="w-full text-center text-xs text-gray-500 hover:text-emerald-900 font-medium py-1 cursor-pointer"
+                  >
+                    ← Go Back / Edit Registration Details
+                  </button>
+                </div>
+              </form>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* ALWAYS SHOW EMAIL */}
@@ -420,32 +551,11 @@ export default function AuthModal({ isOpen, onClose, initialMode, onSuccess }: A
                         }}
                         className="text-[10px] text-emerald-900 font-bold hover:underline cursor-pointer uppercase tracking-wider"
                       >
-                        Forgot Registered Account / Email?
+                        Forgot Password?
                       </button>
                     </div>
                   )}
-                  {mode === "login" ? (
-                    <div className="mt-2.5 space-y-2">
-                      <p className="text-[10px] text-gray-400">
-                        Evaluating? Enter your email or use the one-click Admin shortcut below.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEmail("admin@kalyanhub.com");
-                          setPassword("admin123");
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-900 border border-emerald-100 rounded-lg text-[11px] font-medium hover:bg-emerald-100 active:scale-98 transition-all cursor-pointer"
-                      >
-                        <Shield className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                        Preset Admin: <span className="font-mono underline text-amber-700">admin@kalyanhub.com</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-[10px] text-gray-400 mt-1">
-                      Use an email containing the word &apos;admin&apos; (e.g. admin@kalyanhub.com) to register as an Administrator.
-                    </p>
-                  )}
+
                 </div>
 
                 {/* ALWAYS SHOW PASSWORD */}
@@ -534,6 +644,45 @@ export default function AuthModal({ isOpen, onClose, initialMode, onSuccess }: A
                         >
                           Male (Groom)
                         </button>
+                      </div>
+                    </div>
+
+                    {/* Profile For & Marital Status */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-2xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+                          Profile For
+                        </label>
+                        <select
+                          value={profileFor}
+                          onChange={(e: any) => setProfileFor(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-800"
+                        >
+                          <option value="Self">Self</option>
+                          <option value="Son">Son</option>
+                          <option value="Daughter">Daughter</option>
+                          <option value="Brother">Brother</option>
+                          <option value="Sister">Sister</option>
+                          <option value="Parent">Parent</option>
+                          <option value="Relative">Relative</option>
+                          <option value="Friend">Friend</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-2xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+                          Marital Status
+                        </label>
+                        <select
+                          value={maritalStatus}
+                          onChange={(e: any) => setMaritalStatus(e.target.value)}
+                          className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-800"
+                        >
+                          <option value="Never Married">Never Married</option>
+                          <option value="Divorced">Divorced</option>
+                          <option value="Widowed">Widowed</option>
+                          <option value="Awaiting Divorce">Awaiting Divorce</option>
+                          <option value="Separated">Separated</option>
+                        </select>
                       </div>
                     </div>
 
@@ -642,6 +791,112 @@ export default function AuthModal({ isOpen, onClose, initialMode, onSuccess }: A
                             value={occupation}
                             onChange={(e) => setOccupation(e.target.value)}
                             className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-800 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Family & Self Details Header */}
+                    <div className="pt-4 border-t border-gray-100">
+                      <h4 className="text-2xs font-bold uppercase tracking-wider text-emerald-950 mb-3 flex items-center gap-1">
+                        👨‍👩‍👧‍👦 Family & Self Details (Optional)
+                      </h4>
+                      
+                      <div className="space-y-4">
+                        {/* Father details */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-semibold text-gray-500 mb-1.5">Father's Status</label>
+                            <select
+                              value={fatherStatus}
+                              onChange={(e) => setFatherStatus(e.target.value as "Alive" | "Passed Away")}
+                              className="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-800"
+                            >
+                              <option value="Alive">Alive</option>
+                              <option value="Passed Away">Passed Away</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-semibold text-gray-500 mb-1.5">Father's Name</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Ibrahim Haji"
+                              value={fatherName}
+                              onChange={(e) => setFatherName(e.target.value)}
+                              className="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-800"
+                            />
+                          </div>
+                          {fatherStatus === "Alive" && (
+                            <div>
+                              <label className="block text-[10px] font-semibold text-gray-500 mb-1.5">Father's Occupation</label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Business Owner"
+                                value={fatherOccupation}
+                                onChange={(e) => setFatherOccupation(e.target.value)}
+                                className="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-800"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Mother details */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-semibold text-gray-500 mb-1.5">Mother's Name</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Amina"
+                              value={motherName}
+                              onChange={(e) => setMotherName(e.target.value)}
+                              className="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-800"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-semibold text-gray-500 mb-1.5">Mother's Occupation</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Homemaker"
+                              value={motherOccupation}
+                              onChange={(e) => setMotherOccupation(e.target.value)}
+                              className="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-800"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Siblings & About me */}
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-500 mb-1.5">Siblings Details</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. One elder brother (married), one younger sister"
+                            value={siblingsDetails}
+                            onChange={(e) => setSiblingsDetails(e.target.value)}
+                            className="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-800"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-500 mb-1.5">Introduce Yourself (About Me)</label>
+                          <textarea
+                            placeholder="Tell potential matches about your character, religious values, and partner expectations..."
+                            value={aboutMe}
+                            onChange={(e) => setAboutMe(e.target.value)}
+                            rows={2}
+                            className="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-800"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-semibold text-gray-500 mb-1.5">
+                            Confidential Contact Address <span className="text-amber-600 font-normal">(Hidden from non-premium/non-promo users)</span>
+                          </label>
+                          <textarea
+                            placeholder="e.g. Baitul Noor, Hill Palace Road, Ernakulam"
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                            rows={2}
+                            className="w-full px-2.5 py-2 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-800"
                           />
                         </div>
                       </div>

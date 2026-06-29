@@ -24,6 +24,34 @@ body {
   color: #1c2a27;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  
+  /* Prevent accidental text copying and drag and drop for high security */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Allow text selection inside inputs & textareas so typing works perfectly */
+input, textarea, [contenteditable="true"] {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+}
+
+/* Prevent image dragging / downloading via browser click-and-drag */
+img {
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+  -webkit-touch-callout: none !important; /* Prevents "save image" menu on mobile touch-hold */
+}
+
+/* Security Print Block: turn entire body black/empty during Print/Save-PDF screen capture */
+@media print {
+  body {
+    display: none !important;
+  }
 }
 
 /* Custom scrollbar to match the premium theme */

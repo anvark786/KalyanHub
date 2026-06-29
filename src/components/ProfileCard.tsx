@@ -30,7 +30,7 @@ export default function ProfileCard({ profile, isFavorited, onSelect, onToggleFa
       {/* Photo Container with elegant rounded-t mask */}
       <div className="relative h-72 sm:h-80 w-full overflow-hidden bg-[#faf8f5]">
         <img
-          src={profile.photos[0] || getAvatarPlaceholder(profile.gender)}
+          src={profile.photos[0] || getAvatarPlaceholder(profile.gender, profile.id)}
           alt={profile.fullName}
           referrerPolicy="no-referrer"
           className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-700 ease-out ${isBlurred ? "blur-xl scale-105 select-none pointer-events-none" : ""}`}
@@ -64,6 +64,9 @@ export default function ProfileCard({ profile, isFavorited, onSelect, onToggleFa
           </span>
           <span className="px-2.5 py-1 rounded-lg text-[9px] font-bold bg-amber-500/90 backdrop-blur-md text-emerald-950 uppercase tracking-widest border border-white/10">
             {profile.age} Yrs • {profile.height} cm
+          </span>
+          <span className="px-2.5 py-1 rounded-lg text-[9px] font-bold bg-emerald-800/95 backdrop-blur-md text-white uppercase tracking-widest border border-white/10">
+            {profile.maritalStatus || "Never Married"}
           </span>
         </div>
         
